@@ -18,12 +18,15 @@
 package com.netflix.genie.web.jobs.workflow.impl;
 
 import com.google.common.collect.Sets;
-import com.netflix.genie.common.dto.Cluster;
 import com.netflix.genie.common.dto.ClusterCriteria;
-import com.netflix.genie.common.dto.Command;
 import com.netflix.genie.common.dto.JobRequest;
+import com.netflix.genie.common.internal.dto.v4.Cluster;
+import com.netflix.genie.common.internal.dto.v4.ClusterMetadata;
+import com.netflix.genie.common.internal.dto.v4.Command;
+import com.netflix.genie.common.internal.dto.v4.CommandMetadata;
+import com.netflix.genie.common.internal.jobs.JobConstants;
 import com.netflix.genie.test.categories.UnitTest;
-import com.netflix.genie.web.jobs.JobConstants;
+import com.netflix.genie.web.controllers.DtoConverters;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.junit.Assert;
@@ -134,15 +137,20 @@ public class InitialSetupTaskUnitTest {
         final String cltCritTag3 = "foo";
 
         final Cluster mockCluster = Mockito.mock(Cluster.class);
-        Mockito.when(mockCluster.getId()).thenReturn(java.util.Optional.of(clusterId));
+        Mockito.when(mockCluster.getId()).thenReturn(clusterId);
 
-        Mockito.when(mockCluster.getName()).thenReturn(clusterName);
-        Mockito.when(mockCluster.getTags()).thenReturn(new HashSet<>(Arrays.asList(clusterTag1, clusterTag2)));
+        final ClusterMetadata clusterMetadata = Mockito.mock(ClusterMetadata.class);
+        Mockito.when(mockCluster.getMetadata()).thenReturn(clusterMetadata);
+        Mockito.when(clusterMetadata.getName()).thenReturn(clusterName);
+        Mockito.when(clusterMetadata.getTags()).thenReturn(Sets.newHashSet(clusterTag1, clusterTag2));
 
         final Command mockCommand = Mockito.mock(Command.class);
-        Mockito.when(mockCommand.getId()).thenReturn(java.util.Optional.of(commandId));
-        Mockito.when(mockCommand.getId()).thenReturn(java.util.Optional.of(commandName));
-        Mockito.when(mockCommand.getTags()).thenReturn(new HashSet<>(Arrays.asList(commandTag2, commandTag1)));
+        Mockito.when(mockCommand.getId()).thenReturn(commandId);
+
+        final CommandMetadata commandMetadata = Mockito.mock(CommandMetadata.class);
+        Mockito.when(mockCommand.getMetadata()).thenReturn(commandMetadata);
+        Mockito.when(commandMetadata.getName()).thenReturn(commandName);
+        Mockito.when(commandMetadata.getTags()).thenReturn(Sets.newHashSet(commandTag2, commandTag1));
 
         final JobRequest mockJobRequest = Mockito.mock(JobRequest.class);
         Mockito
@@ -161,25 +169,26 @@ public class InitialSetupTaskUnitTest {
             );
 
         final StringWriter mockWriter = new StringWriter();
-        this.initialSetupTask.createJobDirEnvironmentVariables(mockWriter, tempDir.getRoot().getAbsolutePath());
+        this.initialSetupTask.createJobDirEnvironmentVariables(mockWriter, this.tempDir.getRoot().getAbsolutePath());
         this.initialSetupTask.createApplicationEnvironmentVariables(mockWriter);
         this.initialSetupTask.createCommandEnvironmentVariables(mockWriter, mockCommand);
         this.initialSetupTask.createClusterEnvironmentVariables(mockWriter, mockCluster);
         this.initialSetupTask.createJobEnvironmentVariables(mockWriter, jobId, jobName, memory);
         this.initialSetupTask.createJobRequestEnvironmentVariables(mockWriter, mockJobRequest);
 
-        final String expextedOutput = ""
+        final String expectedOutput = ""
             + "export GENIE_JOB_DIR=\"" + tempDir.getRoot().getAbsolutePath() + "\"\n"
             + "\n"
             + "export GENIE_APPLICATION_DIR=\"${GENIE_JOB_DIR}/genie/applications\"\n"
             + "\n"
-            + "export GENIE_COMMAND_DIR=\"${GENIE_JOB_DIR}/genie/command/" + commandName + "\"\n"
+            + "export GENIE_COMMAND_DIR=\"${GENIE_JOB_DIR}/genie/command/" + commandId + "\"\n"
             + "\n"
-            + "export GENIE_COMMAND_ID=\"" + commandName + "\"\n"
+            + "export GENIE_COMMAND_ID=\"" + commandId + "\"\n"
             + "\n"
-            + "export GENIE_COMMAND_NAME=\"null\"\n"
+            + "export GENIE_COMMAND_NAME=\"" + commandName + "\"\n"
             + "\n"
-            + "export GENIE_COMMAND_TAGS=\"" + commandTag1 + "," + commandTag2 + "\"\n"
+            + "export GENIE_COMMAND_TAGS=\"" + commandTag1 + "," + commandTag2 + "," + DtoConverters.GENIE_ID_PREFIX
+            + commandId + "," + DtoConverters.GENIE_NAME_PREFIX + commandName + "\"\n"
             + "\n"
             + "export GENIE_CLUSTER_DIR=\"${GENIE_JOB_DIR}/genie/cluster/" + clusterId + "\"\n"
             + "\n"
@@ -187,7 +196,8 @@ public class InitialSetupTaskUnitTest {
             + "\n"
             + "export GENIE_CLUSTER_NAME=\"" + clusterName + "\"\n"
             + "\n"
-            + "export GENIE_CLUSTER_TAGS=\"" + clusterTag2 + "," + clusterTag1 + "\"\n"
+            + "export GENIE_CLUSTER_TAGS=\"" + clusterTag2 + "," + clusterTag1 + "," + DtoConverters.GENIE_ID_PREFIX
+            + clusterId + "," + DtoConverters.GENIE_NAME_PREFIX + clusterName + "\"\n"
             + "\n"
             + "export GENIE_JOB_ID=\"" + jobId + "\"\n"
             + "\n"
@@ -207,7 +217,7 @@ public class InitialSetupTaskUnitTest {
             + "export GENIE_REQUESTED_CLUSTER_TAGS_2=\"" + cltCritTag3 + "\"\n"
             + "\n";
 
-        Assert.assertEquals(expextedOutput, mockWriter.getString());
+        Assert.assertEquals(expectedOutput, mockWriter.getString());
     }
 
     /**

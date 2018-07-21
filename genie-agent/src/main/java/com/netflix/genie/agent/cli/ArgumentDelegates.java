@@ -18,6 +18,13 @@
 
 package com.netflix.genie.agent.cli;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.netflix.genie.common.internal.dto.v4.Criterion;
+
+import java.io.File;
+import java.util.List;
+import java.util.Set;
+
 /**
  * Interfaces for command-line delegates (groups of options shared by multiple commands).
  *
@@ -36,6 +43,59 @@ public interface ArgumentDelegates {
         int getServerPort();
 
         long getRpcTimeout();
+    }
+
+    /**
+     * Delegate for agent dependencies cache.
+     */
+    interface CacheArguments {
+
+        File getCacheDirectory();
+
+    }
+
+    /**
+     * Delegate for agent job request parameters.
+     */
+    interface JobRequestArguments {
+
+        List<String> getCommandArguments();
+
+        File getJobDirectoryLocation();
+
+        boolean isInteractive();
+
+        boolean isArchivalDisabled();
+
+        Integer getTimeout();
+
+        String getJobId();
+
+        List<Criterion> getClusterCriteria();
+
+        Criterion getCommandCriterion();
+
+        List<String> getApplicationIds();
+
+        String getJobName();
+
+        String getUser();
+
+        String getEmail();
+
+        String getGrouping();
+
+        String getGroupingInstance();
+
+        String getJobDescription();
+
+        Set<String> getJobTags();
+
+        String getJobVersion();
+
+        JsonNode getJobMetadata();
+
+        boolean isJobRequestedViaAPI();
     }
 
 }

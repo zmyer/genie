@@ -20,7 +20,6 @@ package com.netflix.genie.web.properties;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
 
 /**
@@ -29,12 +28,22 @@ import org.springframework.validation.annotation.Validated;
  * @author tgianos
  * @since 3.0.0
  */
-@ConfigurationProperties(prefix = "genie.tasks.disk-cleanup")
-@Component
+@ConfigurationProperties(prefix = DiskCleanupProperties.PROPERTY_PREFIX)
 @Getter
 @Setter
 @Validated
 public class DiskCleanupProperties {
+
+    /**
+     * The property prefix for Disk Cleanup related tasks.
+     */
+    public static final String PROPERTY_PREFIX = "genie.tasks.disk-cleanup";
+
+    /**
+     * The property key for whether this feature is enabled or not.
+     */
+    public static final String ENABLED_PROPERTY = PROPERTY_PREFIX + ".enabled";
+
     private boolean enabled;
     private String expression = "0 0 0 * * *";
     private int retention = 3;

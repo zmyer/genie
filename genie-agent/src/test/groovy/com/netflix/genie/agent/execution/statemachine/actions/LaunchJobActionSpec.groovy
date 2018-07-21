@@ -18,30 +18,135 @@
 
 package com.netflix.genie.agent.execution.statemachine.actions
 
+import com.netflix.genie.agent.execution.ExecutionContext
+import com.netflix.genie.agent.execution.exceptions.ChangeJobStatusException
+import com.netflix.genie.agent.execution.exceptions.JobLaunchException
+import com.netflix.genie.agent.execution.services.AgentJobService
+import com.netflix.genie.agent.execution.services.LaunchJobService
 import com.netflix.genie.agent.execution.statemachine.Events
-import com.netflix.genie.agent.execution.statemachine.States
+import com.netflix.genie.common.dto.JobStatus
+import com.netflix.genie.common.internal.dto.v4.JobSpecification
 import com.netflix.genie.test.categories.UnitTest
 import org.junit.experimental.categories.Category
-import org.springframework.statemachine.StateContext
 import spock.lang.Specification
 
 @Category(UnitTest.class)
 class LaunchJobActionSpec extends Specification {
-    StateContext<States, Events> stateContext
+    String id
+    ExecutionContext executionContext
+    JobSpecification jobSpec
+    Map<String, String> jobEnvironment
     LaunchJobAction action
+    LaunchJobService launchJobService
+    AgentJobService agentJobService
+    Process process
+    File jobRunDirectory
+    List<String> jobCommandLine
+    boolean interactive
 
     void setup() {
-        this.stateContext = Mock(StateContext)
-        this.action = new LaunchJobAction()
+        this.id = UUID.randomUUID().toString()
+        this.executionContext = Mock(ExecutionContext)
+        this.jobSpec = Mock(JobSpecification)
+        this.jobRunDirectory = Mock(File)
+        this.jobEnvironment = Mock(Map)
+        this.jobCommandLine = Mock(List)
+        this.interactive = true
+        this.launchJobService = Mock(LaunchJobService)
+        this.agentJobService = Mock(AgentJobService)
+        this.process = Mock(Process)
+        this.action = new LaunchJobAction(executionContext, launchJobService, agentJobService)
     }
 
     void cleanup() {
     }
 
-    def "ExecuteStateAction"() {
+    def "Successful"() {
+        JobStatus currentJobStatus = JobStatus.INIT
+
         when:
-        def event = action.executeStateAction(stateContext)
+        def event = action.executeStateAction(executionContext)
+
         then:
+        1 * executionContext.getJobSpecification() >> jobSpec
+        1 * executionContext.getJobDirectory() >> jobRunDirectory
+        1 * executionContext.getJobEnvironment() >> jobEnvironment
+        1 * jobSpec.getCommandArgs() >> jobCommandLine
+        1 * jobSpec.isInteractive() >> interactive
+        1 * launchJobService.launchProcess(jobRunDirectory, jobEnvironment, jobCommandLine, interactive) >> process
+        1 * executionContext.setJobProcess(process)
+        1 * executionContext.getClaimedJobId() >> id
+        1 * executionContext.getCurrentJobStatus() >> currentJobStatus
+        1 * agentJobService.changeJobStatus(id, currentJobStatus, JobStatus.RUNNING, _ as String)
+        1 * executionContext.setCurrentJobStatus(JobStatus.RUNNING)
+
+        expect:
         event == Events.LAUNCH_JOB_COMPLETE
+    }
+
+    def "Successful with actual process"() {
+        setup:
+        process = new ProcessBuilder().command("echo").start()
+        JobStatus currentJobStatus = JobStatus.INIT
+
+        when:
+        def event = action.executeStateAction(executionContext)
+
+        then:
+        1 * executionContext.getJobSpecification() >> jobSpec
+        1 * executionContext.getJobDirectory() >> jobRunDirectory
+        1 * executionContext.getJobEnvironment() >> jobEnvironment
+        1 * jobSpec.getCommandArgs() >> jobCommandLine
+        1 * jobSpec.isInteractive() >> interactive
+        1 * launchJobService.launchProcess(jobRunDirectory, jobEnvironment, jobCommandLine, interactive) >> process
+        1 * executionContext.setJobProcess(process)
+        1 * executionContext.getClaimedJobId() >> id
+        1 * executionContext.getCurrentJobStatus() >> currentJobStatus
+        1 * agentJobService.changeJobStatus(id, currentJobStatus, JobStatus.RUNNING, _ as String)
+        1 * executionContext.setCurrentJobStatus(JobStatus.RUNNING)
+
+        expect:
+        event == Events.LAUNCH_JOB_COMPLETE
+    }
+
+    def "Launch process exception"() {
+        Exception exception = new JobLaunchException("")
+
+        when:
+        action.executeStateAction(executionContext)
+
+        then:
+        1 * executionContext.getJobSpecification() >> jobSpec
+        1 * executionContext.getJobDirectory() >> jobRunDirectory
+        1 * executionContext.getJobEnvironment() >> jobEnvironment
+        1 * jobSpec.getCommandArgs() >> jobCommandLine
+        1 * jobSpec.isInteractive() >> interactive
+        1 * launchJobService.launchProcess(jobRunDirectory, jobEnvironment, jobCommandLine, interactive) >> {throw exception}
+        0 * executionContext.setJobProcess(process)
+        def e = thrown(RuntimeException)
+        e.getCause() == exception
+    }
+
+    def "Change job status exception"() {
+        Exception exception = new ChangeJobStatusException("")
+        JobStatus currentJobStatus = JobStatus.INIT
+
+        when:
+        action.executeStateAction(executionContext)
+
+        then:
+        1 * executionContext.getJobSpecification() >> jobSpec
+        1 * executionContext.getJobDirectory() >> jobRunDirectory
+        1 * executionContext.getJobEnvironment() >> jobEnvironment
+        1 * jobSpec.getCommandArgs() >> jobCommandLine
+        1 * jobSpec.isInteractive() >> interactive
+        1 * launchJobService.launchProcess(jobRunDirectory, jobEnvironment, jobCommandLine, interactive) >> process
+        1 * executionContext.setJobProcess(process)
+        1 * executionContext.getClaimedJobId() >> id
+        1 * executionContext.getCurrentJobStatus() >> currentJobStatus
+        1 * agentJobService.changeJobStatus(id, currentJobStatus, JobStatus.RUNNING, _ as String) >> { throw exception }
+        0 * executionContext.setCurrentJobStatus(_)
+        def e = thrown(RuntimeException)
+        e.getCause() == exception
     }
 }

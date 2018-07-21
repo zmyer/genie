@@ -17,16 +17,16 @@
  */
 package com.netflix.genie.web.jobs;
 
-import com.netflix.genie.common.dto.Application;
-import com.netflix.genie.common.dto.Cluster;
-import com.netflix.genie.common.dto.Command;
 import com.netflix.genie.common.dto.JobRequest;
+import com.netflix.genie.common.internal.dto.v4.Application;
+import com.netflix.genie.common.internal.dto.v4.Cluster;
+import com.netflix.genie.common.internal.dto.v4.Command;
 import com.netflix.genie.common.exceptions.GenieException;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.hibernate.validator.constraints.NotBlank;
 
 import javax.validation.constraints.Min;
+import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 import java.io.File;
 import java.util.ArrayList;
@@ -95,7 +95,6 @@ public final class JobExecutionEnvironment {
          * @param commandObj The command object.
          * @param memory     The amount of memory (in MB) to use to run the job
          * @param dir        The directory location for this job.
-         * @throws GenieException If there is an error.
          */
         public Builder(
             @NotNull(message = "Job Request cannot be null")
@@ -108,7 +107,7 @@ public final class JobExecutionEnvironment {
             final int memory,
             @NotBlank(message = "Job working directory cannot be empty")
             final File dir
-        ) throws GenieException {
+        ) {
             this.bJobRequest = request;
             this.bCluster = clusterObj;
             this.bCommand = commandObj;

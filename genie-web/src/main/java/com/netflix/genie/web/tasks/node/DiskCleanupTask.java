@@ -19,7 +19,7 @@ package com.netflix.genie.web.tasks.node;
 
 import com.netflix.genie.common.dto.Job;
 import com.netflix.genie.common.exceptions.GenieException;
-import com.netflix.genie.web.jobs.JobConstants;
+import com.netflix.genie.common.internal.jobs.JobConstants;
 import com.netflix.genie.web.properties.DiskCleanupProperties;
 import com.netflix.genie.web.properties.JobsProperties;
 import com.netflix.genie.web.services.JobSearchService;
@@ -31,13 +31,9 @@ import org.apache.commons.exec.CommandLine;
 import org.apache.commons.exec.Executor;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.SystemUtils;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.Resource;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.support.CronTrigger;
-import org.springframework.stereotype.Component;
 
 import javax.validation.constraints.NotNull;
 import java.io.File;
@@ -50,9 +46,10 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * This task runs on every Genie node and is responsible for cleaning up the local disk so that space can be
  * recaptured.
+ *
+ * @author tgianos
+ * @since 3.0.0
  */
-@ConditionalOnProperty("genie.tasks.databaseCleanup.enabled")
-@Component
 @Slf4j
 public class DiskCleanupTask implements Runnable {
 
@@ -79,10 +76,9 @@ public class DiskCleanupTask implements Runnable {
      * @param registry         The metrics registry
      * @throws IOException When it is unable to open a file reference to the job directory
      */
-    @Autowired
     public DiskCleanupTask(
         @NotNull final DiskCleanupProperties properties,
-        @Qualifier("genieTaskScheduler") @NotNull final TaskScheduler scheduler,
+        @NotNull final TaskScheduler scheduler,
         @NotNull final Resource jobsDir,
         @NotNull final JobSearchService jobSearchService,
         @NotNull final JobsProperties jobsProperties,

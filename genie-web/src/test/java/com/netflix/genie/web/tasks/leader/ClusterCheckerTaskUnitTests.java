@@ -17,12 +17,12 @@
  */
 package com.netflix.genie.web.tasks.leader;
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.netflix.genie.common.dto.Job;
 import com.netflix.genie.common.dto.JobExecution;
 import com.netflix.genie.common.dto.JobStatus;
 import com.netflix.genie.common.exceptions.GenieException;
+import com.netflix.genie.common.internal.util.GenieHostInfo;
 import com.netflix.genie.test.categories.UnitTest;
 import com.netflix.genie.web.properties.ClusterCheckerProperties;
 import com.netflix.genie.web.services.JobPersistenceService;
@@ -42,8 +42,8 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -56,17 +56,20 @@ import java.util.UUID;
 public class ClusterCheckerTaskUnitTests {
 
     private ClusterCheckerTask task;
-    private String hostName;
+    private String hostname;
     private JobSearchService jobSearchService;
     private JobPersistenceService jobPersistenceService;
     private RestTemplate restTemplate;
+    private String scheme;
+    private String healthEndpoint;
 
     /**
      * Setup for the tests.
      */
     @Before
     public void setup() {
-        this.hostName = UUID.randomUUID().toString();
+        this.hostname = UUID.randomUUID().toString();
+        final GenieHostInfo genieHostInfo = new GenieHostInfo(this.hostname);
         final ClusterCheckerProperties properties = new ClusterCheckerProperties();
         properties.setHealthIndicatorsToIgnore("memory,genie ");
         this.jobSearchService = Mockito.mock(JobSearchService.class);
@@ -75,7 +78,7 @@ public class ClusterCheckerTaskUnitTests {
         final WebEndpointProperties serverProperties = Mockito.mock(WebEndpointProperties.class);
         Mockito.when(serverProperties.getBasePath()).thenReturn("/actuator");
         this.task = new ClusterCheckerTask(
-            this.hostName,
+            genieHostInfo,
             properties,
             this.jobSearchService,
             this.jobPersistenceService,
@@ -83,6 +86,9 @@ public class ClusterCheckerTaskUnitTests {
             serverProperties,
             new SimpleMeterRegistry()
         );
+
+        this.scheme = properties.getScheme() + "://";
+        this.healthEndpoint = ":" + properties.getPort() + "/actuator/health";
     }
 
     /**
@@ -92,45 +98,98 @@ public class ClusterCheckerTaskUnitTests {
      */
     @Test
     public void canRun() throws GenieException {
+        final String emptyString = "";
         final String host1 = UUID.randomUUID().toString();
         final String host2 = UUID.randomUUID().toString();
         final String host3 = UUID.randomUUID().toString();
 
-        // Mock the 9 invocations for 3 calls to run
         Mockito
-            .when(this.restTemplate.getForObject(Mockito.anyString(), Mockito.any()))
-            .thenReturn("")
-            .thenThrow(new RestClientException("blah"))
-            .thenReturn("")
-            .thenReturn("")
-            .thenThrow(new RestClientException("blah"))
-            .thenReturn("")
-            .thenReturn("")
-            .thenThrow(new HttpServerErrorException(HttpStatus.INTERNAL_SERVER_ERROR, "",
-                ("{\"status\":\"OUT_OF_SERVICE\", \"genie\": { \"status\": \"OUT_OF_SERVICE\"}, "
-                    + "\"db\": { \"status\": \"OUT_OF_SERVICE\"}}").getBytes(StandardCharsets.UTF_8),
-                StandardCharsets.UTF_8))
-            .thenReturn("")
-            .thenReturn("")
-            .thenThrow(new HttpServerErrorException(HttpStatus.INTERNAL_SERVER_ERROR, "",
-                ("{\"status\":\"OUT_OF_SERVICE\", \"genie\": { \"status\": \"OUT_OF_SERVICE\"}, "
-                    + "\"db\": { \"status\": \"OUT_OF_SERVICE\"}}").getBytes(StandardCharsets.UTF_8),
-                StandardCharsets.UTF_8))
-            .thenReturn("")
-            .thenReturn("")
-            .thenThrow(new HttpServerErrorException(HttpStatus.INTERNAL_SERVER_ERROR, "",
-                ("{\"status\":\"OUT_OF_SERVICE\", \"genie\": { \"status\": \"OUT_OF_SERVICE\"}, "
-                    + "\"db\": { \"status\": \"UP\"}}").getBytes(StandardCharsets.UTF_8),
-                StandardCharsets.UTF_8))
-            .thenReturn("")
-            .thenReturn("")
-            .thenThrow(new HttpServerErrorException(HttpStatus.INTERNAL_SERVER_ERROR, "",
-                ("{\"status\":\"OUT_OF_SERVICE\", \"genie\": { \"status\": \"OUT_OF_SERVICE\"}, "
-                    + "\"db\": { \"status\": \"OUT_OF_SERVICE\"}}").getBytes(StandardCharsets.UTF_8),
-                StandardCharsets.UTF_8))
-            .thenReturn("");
+            .when(
+                this.restTemplate.getForObject(
+                    Mockito.eq(this.scheme + host1 + this.healthEndpoint),
+                    Mockito.any()
+                )
+            )
+            .thenReturn(
+                emptyString,
+                emptyString,
+                emptyString,
+                emptyString,
+                emptyString,
+                emptyString
+            );
 
-        final List<String> hostsRunningJobs = Lists.newArrayList(this.hostName, host1, host2, host3);
+        Mockito
+            .when(
+                this.restTemplate.getForObject(
+                    Mockito.eq(this.scheme + host2 + this.healthEndpoint),
+                    Mockito.any()
+                )
+            )
+            .thenThrow(new RestClientException("blah"))
+            .thenThrow(new RestClientException("blah"))
+            .thenThrow(
+                new HttpServerErrorException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "",
+                    (
+                        "{\"status\":\"OUT_OF_SERVICE\", \"genie\": { \"status\": \"OUT_OF_SERVICE\"}, "
+                            + "\"db\": { \"status\": \"OUT_OF_SERVICE\"}}"
+                    ).getBytes(StandardCharsets.UTF_8),
+                    StandardCharsets.UTF_8
+                )
+            )
+            .thenThrow(
+                new HttpServerErrorException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "",
+                    (
+                        "{\"status\":\"OUT_OF_SERVICE\", \"genie\": { \"status\": \"OUT_OF_SERVICE\"}, "
+                            + "\"db\": { \"status\": \"OUT_OF_SERVICE\"}}"
+                    ).getBytes(StandardCharsets.UTF_8),
+                    StandardCharsets.UTF_8
+                )
+            )
+            .thenThrow(
+                new HttpServerErrorException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "",
+                    (
+                        "{\"status\":\"OUT_OF_SERVICE\", \"genie\": { \"status\": \"OUT_OF_SERVICE\"}, "
+                            + "\"db\": { \"status\": \"UP\"}}"
+                    ).getBytes(StandardCharsets.UTF_8),
+                    StandardCharsets.UTF_8
+                )
+            )
+            .thenThrow(
+                new HttpServerErrorException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "",
+                    (
+                        "{\"status\":\"OUT_OF_SERVICE\", \"genie\": { \"status\": \"OUT_OF_SERVICE\"}, "
+                            + "\"db\": { \"status\": \"OUT_OF_SERVICE\"}}"
+                    ).getBytes(StandardCharsets.UTF_8),
+                    StandardCharsets.UTF_8
+                )
+            );
+
+        Mockito
+            .when(
+                this.restTemplate.getForObject(
+                    Mockito.eq(this.scheme + host3 + this.healthEndpoint),
+                    Mockito.any()
+                )
+            )
+            .thenReturn(
+                emptyString,
+                emptyString,
+                emptyString,
+                emptyString,
+                emptyString,
+                emptyString
+            );
+
+        final Set<String> hostsRunningJobs = Sets.newHashSet(this.hostname, host1, host2, host3);
         Mockito.when(this.jobSearchService.getAllHostsWithActiveJobs()).thenReturn(hostsRunningJobs);
 
         final Job job1 = Mockito.mock(Job.class);

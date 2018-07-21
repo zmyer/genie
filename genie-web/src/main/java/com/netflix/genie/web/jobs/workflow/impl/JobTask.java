@@ -20,7 +20,7 @@ package com.netflix.genie.web.jobs.workflow.impl;
 import com.google.common.collect.Sets;
 import com.netflix.genie.common.exceptions.GenieException;
 import com.netflix.genie.common.exceptions.GeniePreconditionException;
-import com.netflix.genie.web.jobs.JobConstants;
+import com.netflix.genie.common.internal.jobs.JobConstants;
 import com.netflix.genie.web.jobs.JobExecutionEnvironment;
 import com.netflix.genie.web.services.AttachmentService;
 import com.netflix.genie.web.services.impl.GenieFileTransferService;
@@ -145,7 +145,7 @@ public class JobTask extends GenieBaseTask {
                 + System.lineSeparator());
 
             writer.write(
-                jobExecEnv.getCommand().getExecutable()
+                StringUtils.join(jobExecEnv.getCommand().getExecutable(), ' ')
                     + JobConstants.WHITE_SPACE
                     + jobExecEnv.getJobRequest().getCommandArgs().orElse(EMPTY_STRING)
                     + JobConstants.STDOUT_REDIRECT

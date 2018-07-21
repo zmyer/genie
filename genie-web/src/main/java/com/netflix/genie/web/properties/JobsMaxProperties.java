@@ -19,6 +19,7 @@ package com.netflix.genie.web.properties;
 
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 import javax.validation.constraints.Min;
@@ -29,10 +30,16 @@ import javax.validation.constraints.Min;
  * @author tgianos
  * @since 3.0.0
  */
+@ConfigurationProperties(prefix = JobsMaxProperties.PROPERTY_PREFIX)
 @Getter
 @Setter
 @Validated
 public class JobsMaxProperties {
+
+    /**
+     * The property prefix for all properties in this group.
+     */
+    public static final String PROPERTY_PREFIX = "genie.jobs.max";
 
     @Min(value = 1L, message = "Max standard output file size has to be at least 1 byte and preferably much larger")
     private long stdOutSize = 8_589_934_592L;

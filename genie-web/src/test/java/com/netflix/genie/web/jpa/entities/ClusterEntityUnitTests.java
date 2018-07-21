@@ -116,7 +116,7 @@ public class ClusterEntityUnitTests extends EntityTestsBase {
      */
     @Test(expected = ConstraintViolationException.class)
     public void testValidateNoVersion() {
-        this.c.setVersion("");
+        this.c.setVersion("\t");
         this.validate(this.c);
     }
 

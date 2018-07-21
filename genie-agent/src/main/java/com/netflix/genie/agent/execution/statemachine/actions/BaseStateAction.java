@@ -18,6 +18,7 @@
 
 package com.netflix.genie.agent.execution.statemachine.actions;
 
+import com.netflix.genie.agent.execution.ExecutionContext;
 import com.netflix.genie.agent.execution.statemachine.Events;
 import com.netflix.genie.agent.execution.statemachine.States;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +32,12 @@ import org.springframework.statemachine.StateContext;
 @Slf4j
 public abstract class BaseStateAction implements StateAction {
 
+    private final ExecutionContext executionContext;
+
+    protected BaseStateAction(final ExecutionContext executionContext) {
+        this.executionContext = executionContext;
+    }
+
     /**
      * {@inheritDoc}
      */
@@ -40,22 +47,21 @@ public abstract class BaseStateAction implements StateAction {
         final States currentState = context.getStateMachine().getState().getId();
         final String currentActionName = this.getClass().getSimpleName();
 
+        // Enqueue this action for later cleanup
+        executionContext.addCleanupActions(this);
+
         Events nextEvent;
         try {
             log.info("Performing state {} action: {}", currentState, currentActionName);
             // State action returns the next event to send (or null)
-            nextEvent = executeStateAction(context);
+            nextEvent = executeStateAction(executionContext);
             log.info("State action {} returned {} as next event", currentActionName, nextEvent);
         } catch (final Exception e) {
+            executionContext.addStateActionError(currentState, this.getClass(), e);
             nextEvent = Events.ERROR;
-            if (!context.getStateMachine().hasStateMachineError()) {
-                // Set error, will enable transitions to HANDLE_ERROR state.
-                // Don't override if an earlier one is set, original one is more relevant.
-                context.getStateMachine().setStateMachineError(e);
-            }
             log.error(
                 "Action {} failed with exception",
-                this.getClass().getSimpleName(),
+                currentActionName,
                 e
             );
         }
@@ -70,5 +76,20 @@ public abstract class BaseStateAction implements StateAction {
         }
     }
 
-    protected abstract Events executeStateAction(final StateContext<States, Events> context);
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final void cleanup() {
+        final String currentActionName = this.getClass().getSimpleName();
+        log.info("Executing cleanup for action {}", currentActionName);
+        executeStateActionCleanup(executionContext);
+    }
+
+    protected abstract Events executeStateAction(final ExecutionContext ctx);
+
+    protected void executeStateActionCleanup(final ExecutionContext ctx) {
+        log.debug("Action has no cleanup");
+    }
+
 }

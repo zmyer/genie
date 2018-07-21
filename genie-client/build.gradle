@@ -4,6 +4,7 @@ dependencies {
      *******************************/
 
     compile project(":genie-common")
+    compile project(":genie-common-external")
 
     compile("commons-beanutils:commons-beanutils")
     compile("com.squareup.okhttp3:okhttp")
@@ -30,6 +31,7 @@ dependencies {
      *******************************/
 
     testCompile(project(":genie-test"))
+    testCompile(project(":genie-test-web"))
     testCompile(project(":genie-web"))
 
     testCompile("org.springframework.boot:spring-boot-starter-jetty")

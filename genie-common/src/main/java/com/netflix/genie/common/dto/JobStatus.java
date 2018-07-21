@@ -18,60 +18,96 @@
 package com.netflix.genie.common.dto;
 
 import com.netflix.genie.common.exceptions.GeniePreconditionException;
+import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.Arrays;
 import java.util.Collections;
-import java.util.EnumSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Possible statuses for a Job.
  *
  * @author tgianos
  */
+@Getter
 public enum JobStatus {
 
     /**
+     * The id of the job has been reserved.
+     */
+    RESERVED(true, true, false),
+    /**
+     * The job specification has been resolved.
+     */
+    RESOLVED(true, false, true),
+    /**
+     * The job has been accepted by the system via the REST API.
+     */
+    ACCEPTED(true, false, true),
+    /**
+     * The job has been claimed by a running agent.
+     */
+    CLAIMED(true, false, false),
+    /**
      * Job has been initialized, but not running yet.
      */
-    INIT(true),
+    INIT(true, false, false),
     /**
      * Job is now running.
      */
-    RUNNING(true),
+    RUNNING(true, false, false),
     /**
      * Job has finished executing, and is successful.
      */
-    SUCCEEDED(false),
+    SUCCEEDED(false, false, false),
     /**
      * Job has been killed.
      */
-    KILLED(false),
+    KILLED(false, false, false),
     /**
      * Job failed.
      */
-    FAILED(false),
+    FAILED(false, false, false),
     /**
      * Job cannot be run due to invalid criteria.
      */
-    INVALID(false);
+    INVALID(false, false, false);
 
     private static final Set<JobStatus> ACTIVE_STATUSES = Collections.unmodifiableSet(
-        EnumSet.of(JobStatus.INIT, JobStatus.RUNNING)
+        Arrays.stream(JobStatus.values()).filter(JobStatus::isActive).collect(Collectors.toSet())
     );
+
     private static final Set<JobStatus> FINISHED_STATUSES = Collections.unmodifiableSet(
-        EnumSet.of(JobStatus.SUCCEEDED, JobStatus.KILLED, JobStatus.FAILED, JobStatus.INVALID)
+        Arrays.stream(JobStatus.values()).filter(JobStatus::isFinished).collect(Collectors.toSet())
+    );
+
+    private static final Set<JobStatus> RESOLVABLE_STATUSES = Collections.unmodifiableSet(
+        Arrays.stream(JobStatus.values()).filter(JobStatus::isResolvable).collect(Collectors.toSet())
+    );
+
+    private static final Set<JobStatus> CLAIMABLE_STATUSES = Collections.unmodifiableSet(
+        Arrays.stream(JobStatus.values()).filter(JobStatus::isClaimable).collect(Collectors.toSet())
     );
 
     private final boolean active;
+    private final boolean resolvable;
+    private final boolean claimable;
 
     /**
      * Constructor.
      *
-     * @param isActive whether this status should be considered active or not
+     * @param active     whether this status should be considered active or not
+     * @param resolvable whether this status should be considered as a job that is valid to have a job specification
+     *                   resolved or not
+     * @param claimable  Whether this status should be considered as a job that is valid to be claimed by an agent or
+     *                   not
      */
-    JobStatus(final boolean isActive) {
-        this.active = isActive;
+    JobStatus(final boolean active, final boolean resolvable, final boolean claimable) {
+        this.active = active;
+        this.resolvable = resolvable;
+        this.claimable = claimable;
     }
 
     /**
@@ -90,26 +126,8 @@ public enum JobStatus {
             }
         }
         throw new GeniePreconditionException(
-            "Unacceptable job status. Must be one of {Init, Running, Succeeded, Killed, Failed, Invalid}"
+            "Unacceptable job status. Must be one of " + Arrays.toString(JobStatus.values())
         );
-    }
-
-    /**
-     * Check whether this job is in an active state or not.
-     *
-     * @return True if the job is still actively processing in some manner
-     */
-    public boolean isActive() {
-        return this.active;
-    }
-
-    /**
-     * Check whether the job is no longer running.
-     *
-     * @return True if the job is no longer processing for one reason or another.
-     */
-    public boolean isFinished() {
-        return !this.active;
     }
 
     /**
@@ -128,5 +146,32 @@ public enum JobStatus {
      */
     public static Set<JobStatus> getFinishedStatuses() {
         return FINISHED_STATUSES;
+    }
+
+    /**
+     * Get an unmodifiable set of all the statuses from which a job can be marked resolved.
+     *
+     * @return Unmodifiable set of all resolvable statuses
+     */
+    public static Set<JobStatus> getResolvableStatuses() {
+        return RESOLVABLE_STATUSES;
+    }
+
+    /**
+     * Get an unmodifiable set of all the statuses from which a job can be marked claimed.
+     *
+     * @return Unmodifiable set of all claimable statuses
+     */
+    public static Set<JobStatus> getClaimableStatuses() {
+        return CLAIMABLE_STATUSES;
+    }
+
+    /**
+     * Check whether the job is no longer running.
+     *
+     * @return True if the job is no longer processing for one reason or another.
+     */
+    public boolean isFinished() {
+        return !this.active;
     }
 }

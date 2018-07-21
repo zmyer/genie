@@ -18,22 +18,27 @@
 package com.netflix.genie.web.jpa.services;
 
 import com.google.common.collect.Sets;
-import com.netflix.genie.common.exceptions.GenieException;
-import com.netflix.genie.common.exceptions.GenieNotFoundException;
-import com.netflix.genie.common.exceptions.GenieServerException;
+import com.netflix.genie.common.internal.dto.v4.ExecutionEnvironment;
+import com.netflix.genie.common.internal.exceptions.unchecked.GenieRuntimeException;
+import com.netflix.genie.web.jpa.entities.ApplicationEntity;
+import com.netflix.genie.web.jpa.entities.ClusterEntity;
+import com.netflix.genie.web.jpa.entities.CommandEntity;
 import com.netflix.genie.web.jpa.entities.FileEntity;
 import com.netflix.genie.web.jpa.entities.TagEntity;
-import com.netflix.genie.web.jpa.repositories.JpaFileRepository;
-import com.netflix.genie.web.jpa.repositories.JpaTagRepository;
-import com.netflix.genie.web.services.FileService;
-import com.netflix.genie.web.services.TagService;
+import com.netflix.genie.web.jpa.entities.UniqueIdEntity;
+import com.netflix.genie.web.jpa.repositories.JpaApplicationRepository;
+import com.netflix.genie.web.jpa.repositories.JpaClusterRepository;
+import com.netflix.genie.web.jpa.repositories.JpaCommandRepository;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.hibernate.validator.constraints.NotBlank;
 
+import javax.annotation.Nullable;
+import javax.validation.constraints.NotBlank;
+import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.UUID;
+import java.util.function.Consumer;
 
 /**
  * Base service for other services to extend for common functionality.
@@ -45,35 +50,33 @@ import java.util.stream.Collectors;
 @Getter(AccessLevel.PACKAGE)
 class JpaBaseService {
 
-    static final String GENIE_TAG_NAMESPACE = "genie.";
-    static final String GENIE_ID_TAG_NAMESPACE = GENIE_TAG_NAMESPACE + "id:";
-    static final String GENIE_NAME_TAG_NAMESPACE = GENIE_TAG_NAMESPACE + "name:";
-    private static final char COMMA = ',';
-    private static final String EMPTY_STRING = "";
-
-    private final TagService tagService;
-    private final JpaTagRepository tagRepository;
-    private final FileService fileService;
-    private final JpaFileRepository fileRepository;
+    private final JpaTagPersistenceService tagPersistenceService;
+    private final JpaFilePersistenceService filePersistenceService;
+    private final JpaApplicationRepository applicationRepository;
+    private final JpaClusterRepository clusterRepository;
+    private final JpaCommandRepository commandRepository;
 
     /**
      * Constructor.
      *
-     * @param tagService     The tag service to use
-     * @param tagRepository  The tag repository to use
-     * @param fileService    The file service to use
-     * @param fileRepository The file repository to use
+     * @param tagPersistenceService  The tag persistence service to use
+     * @param filePersistenceService The file persistence service to use
+     * @param applicationRepository  Application repository to use
+     * @param clusterRepository      Cluster repository to use
+     * @param commandRepository      Command repository to use
      */
     JpaBaseService(
-        final TagService tagService,
-        final JpaTagRepository tagRepository,
-        final FileService fileService,
-        final JpaFileRepository fileRepository
+        final JpaTagPersistenceService tagPersistenceService,
+        final JpaFilePersistenceService filePersistenceService,
+        final JpaApplicationRepository applicationRepository,
+        final JpaClusterRepository clusterRepository,
+        final JpaCommandRepository commandRepository
     ) {
-        this.tagService = tagService;
-        this.tagRepository = tagRepository;
-        this.fileService = fileService;
-        this.fileRepository = fileRepository;
+        this.tagPersistenceService = tagPersistenceService;
+        this.filePersistenceService = filePersistenceService;
+        this.applicationRepository = applicationRepository;
+        this.clusterRepository = clusterRepository;
+        this.commandRepository = commandRepository;
     }
 
     /**
@@ -81,14 +84,14 @@ class JpaBaseService {
      *
      * @param file The file to create
      * @return The file entity that has been persisted in the database
-     * @throws GenieException on error
+     * @throws GenieRuntimeException If we can't find the entity after creation.
      */
-    FileEntity createAndGetFileEntity(
-        @NotBlank(message = "File path cannot be blank") final String file
-    ) throws GenieException {
-        this.fileService.createFileIfNotExists(file);
-        return this.fileRepository.findByFile(file).orElseThrow(
-            () -> new GenieNotFoundException("Couldn't find file entity for file " + file)
+    FileEntity createAndGetFileEntity(@NotBlank(message = "File path cannot be blank") final String file) {
+        this.filePersistenceService.createFileIfNotExists(file);
+        return this.filePersistenceService.getFile(file).orElseThrow(
+            // This shouldn't ever happen as the contract of previous API call states it will exists hence
+            // throw a Runtime exception as there is no real recovery
+            () -> new GenieRuntimeException("Couldn't find file entity for file " + file)
         );
     }
 
@@ -97,9 +100,9 @@ class JpaBaseService {
      *
      * @param files The files to create
      * @return The set of attached entities
-     * @throws GenieException on error
+     * @throws GenieRuntimeException on error
      */
-    Set<FileEntity> createAndGetFileEntities(final Set<String> files) throws GenieException {
+    Set<FileEntity> createAndGetFileEntities(final Set<String> files) {
         final Set<FileEntity> fileEntities = Sets.newHashSet();
         for (final String file : files) {
             fileEntities.add(this.createAndGetFileEntity(file));
@@ -112,14 +115,14 @@ class JpaBaseService {
      *
      * @param tag The file to create
      * @return The tag entity that has been persisted in the database
-     * @throws GenieException on error
+     * @throws GenieRuntimeException on error
      */
-    TagEntity createAndGetTagEntity(
-        @NotBlank(message = "Tag cannot be blank") final String tag
-    ) throws GenieException {
-        this.tagService.createTagIfNotExists(tag);
-        return this.tagRepository.findByTag(tag).orElseThrow(
-            () -> new GenieNotFoundException("Couldn't find tag entity for tag " + tag)
+    TagEntity createAndGetTagEntity(@NotBlank(message = "Tag cannot be blank") final String tag) {
+        this.tagPersistenceService.createTagIfNotExists(tag);
+        return this.tagPersistenceService.getTag(tag).orElseThrow(
+            // This shouldn't ever happen as the contract of previous API call states it will exists hence
+            // throw a Runtime exception as there is no real recovery
+            () -> new GenieRuntimeException("Couldn't find tag entity for tag " + tag)
         );
     }
 
@@ -128,9 +131,9 @@ class JpaBaseService {
      *
      * @param tags The tags to create
      * @return The set of attached entities
-     * @throws GenieException on error
+     * @throws GenieRuntimeException on error
      */
-    Set<TagEntity> createAndGetTagEntities(final Set<String> tags) throws GenieException {
+    Set<TagEntity> createAndGetTagEntities(final Set<String> tags) {
         final Set<TagEntity> tagEntities = Sets.newHashSet();
         for (final String tag : tags) {
             tagEntities.add(this.createAndGetTagEntity(tag));
@@ -139,48 +142,86 @@ class JpaBaseService {
     }
 
     /**
-     * Get the tags with the current genie.id and genie.name tags added into the set.
+     * Set the unique id and other related fields for an entity.
      *
-     * @param tags The set of tags to modify
-     * @param id   The id of the entity
-     * @param name The name of the entity
-     * @throws GenieException On any exception
+     * @param entity      The entity to set the unique id for
+     * @param requestedId The id requested if there was one. Null if not.
+     * @param <E>         The entity type which must extend {@link UniqueIdEntity}
      */
-    void setFinalTags(final Set<TagEntity> tags, final String id, final String name) throws GenieException {
-        // Make sure the id tag is there. Should never be updated
-        final Set<String> idTags = tags
-            .stream()
-            .filter(tagEntity -> tagEntity.getTag().startsWith(GENIE_ID_TAG_NAMESPACE))
-            .map(TagEntity::getTag)
-            .collect(Collectors.toSet());
-        if (idTags.size() > 1) {
-            throw new GenieServerException(
-                "Should only have one id tag instead have: " + idTags
-                    .stream()
-                    .reduce((one, two) -> one + COMMA + two)
-                    .orElse(EMPTY_STRING));
-        } else if (idTags.isEmpty()) {
-            tags.add(this.createAndGetTagEntity(GENIE_ID_TAG_NAMESPACE + id));
+    <E extends UniqueIdEntity> void setUniqueId(final E entity, @Nullable final String requestedId) {
+        if (requestedId != null) {
+            entity.setUniqueId(requestedId);
+            entity.setRequestedId(true);
+        } else {
+            entity.setUniqueId(UUID.randomUUID().toString());
+            entity.setRequestedId(false);
         }
+    }
 
-        final String nameTag = GENIE_NAME_TAG_NAMESPACE + name;
-
-        // Remove any name tags that aren't the one we want
-        tags.removeAll(
-            tags
-                .stream()
-                .filter(
-                    tagEntity -> {
-                        final String tag = tagEntity.getTag();
-                        return tag.startsWith(GENIE_NAME_TAG_NAMESPACE) && !tag.equals(nameTag);
-                    }
-                )
-                .collect(Collectors.toSet())
+    /**
+     * Set the resources (configs, dependencies, setup file) for an Entity.
+     *
+     * @param resources            The resources to set
+     * @param configsConsumer      The consumer method for the created config file entities
+     * @param dependenciesConsumer The consumer method for the created dependency file entities
+     * @param setupFileConsumer    The consumer method for the created setup file reference
+     */
+    void setEntityResources(
+        final ExecutionEnvironment resources,
+        final Consumer<Set<FileEntity>> configsConsumer,
+        final Consumer<Set<FileEntity>> dependenciesConsumer,
+        final Consumer<FileEntity> setupFileConsumer
+    ) {
+        // Save all the unowned entities first to avoid unintended flushes
+        configsConsumer.accept(this.createAndGetFileEntities(resources.getConfigs()));
+        dependenciesConsumer.accept(this.createAndGetFileEntities(resources.getDependencies()));
+        setupFileConsumer.accept(
+            resources.getSetupFile().isPresent()
+                ? this.createAndGetFileEntity(resources.getSetupFile().get())
+                : null
         );
+    }
 
-        // Check if the tags contains the name tag now
-        if (tags.stream().filter(tagEntity -> tagEntity.getTag().equals(nameTag)).count() < 1) {
-            tags.add(this.createAndGetTagEntity(nameTag));
-        }
+    /**
+     * Set the tag entities created into the consumer.
+     *
+     * @param tags         The tags to create and set
+     * @param tagsConsumer Where to store the created tags
+     */
+    void setEntityTags(final Set<String> tags, final Consumer<Set<TagEntity>> tagsConsumer) {
+        tagsConsumer.accept(this.createAndGetTagEntities(tags));
+    }
+
+    /**
+     * Retrieve an application entity. If this API is called within an active transaction the returned entity will
+     * remain attached to the persistence context, otherwise it will be detached and any modifications will be lost.
+     *
+     * @param id The id of the application to retrieve from the database
+     * @return The {@link ApplicationEntity} if a match for the {@code id} is found or {@link Optional#empty()}
+     */
+    Optional<ApplicationEntity> getApplicationEntity(@NotBlank(message = "No application id entered") final String id) {
+        return this.applicationRepository.findByUniqueId(id);
+    }
+
+    /**
+     * Retrieve a cluster entity. If this API is called within an active transaction the returned entity will
+     * remain attached to the persistence context, otherwise it will be detached and any modifications will be lost.
+     *
+     * @param id The id of the cluster to retrieve from the database
+     * @return The {@link ClusterEntity} if a match for the {@code id} is found or {@link Optional#empty()}
+     */
+    Optional<ClusterEntity> getClusterEntity(@NotBlank(message = "No cluster id entered") final String id) {
+        return this.clusterRepository.findByUniqueId(id);
+    }
+
+    /**
+     * Retrieve a command entity. If this API is called within an active transaction the returned entity will
+     * remain attached to the persistence context, otherwise it will be detached and any modifications will be lost.
+     *
+     * @param id The id of the command to retrieve from the database
+     * @return The {@link CommandEntity} if a match for the {@code id} is found or {@link Optional#empty()}
+     */
+    Optional<CommandEntity> getCommandEntity(@NotBlank(message = "No command id entered") final String id) {
+        return this.commandRepository.findByUniqueId(id);
     }
 }

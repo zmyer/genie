@@ -32,11 +32,11 @@ import com.netflix.genie.common.exceptions.GenieNotFoundException;
 import com.netflix.genie.common.exceptions.GenieServerException;
 import com.netflix.genie.web.jpa.entities.JobEntity;
 import com.netflix.genie.web.jpa.entities.JobEntity_;
+import com.netflix.genie.web.jpa.entities.projections.AgentHostnameProjection;
 import com.netflix.genie.web.jpa.entities.projections.JobApplicationsProjection;
 import com.netflix.genie.web.jpa.entities.projections.JobClusterProjection;
 import com.netflix.genie.web.jpa.entities.projections.JobCommandProjection;
 import com.netflix.genie.web.jpa.entities.projections.JobExecutionProjection;
-import com.netflix.genie.web.jpa.entities.projections.JobHostNameProjection;
 import com.netflix.genie.web.jpa.entities.projections.JobMetadataProjection;
 import com.netflix.genie.web.jpa.entities.projections.JobProjection;
 import com.netflix.genie.web.jpa.entities.projections.JobRequestProjection;
@@ -47,13 +47,11 @@ import com.netflix.genie.web.jpa.repositories.JpaJobRepository;
 import com.netflix.genie.web.jpa.specifications.JpaJobSpecs;
 import com.netflix.genie.web.services.JobSearchService;
 import lombok.extern.slf4j.Slf4j;
-import org.hibernate.validator.constraints.NotBlank;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Nullable;
 import javax.persistence.EntityManager;
@@ -63,10 +61,12 @@ import javax.persistence.criteria.CriteriaQuery;
 import javax.persistence.criteria.Order;
 import javax.persistence.criteria.Predicate;
 import javax.persistence.criteria.Root;
+import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -76,9 +76,8 @@ import java.util.stream.Collectors;
  * @author amsharma
  * @author tgianos
  */
-@Slf4j
 @Transactional(readOnly = true)
-@Validated
+@Slf4j
 public class JpaJobSearchServiceImpl implements JobSearchService {
 
     private final JpaJobRepository jobRepository;
@@ -208,11 +207,11 @@ public class JpaJobSearchServiceImpl implements JobSearchService {
      * {@inheritDoc}
      */
     @Override
-    public Set<Job> getAllActiveJobsOnHost(@NotBlank final String hostName) {
-        log.debug("Called with hostname {}", hostName);
+    public Set<Job> getAllActiveJobsOnHost(@NotBlank final String hostname) {
+        log.debug("Called with hostname {}", hostname);
 
         final Set<JobProjection> jobs
-            = this.jobRepository.findByHostNameAndStatusIn(hostName, JobStatus.getActiveStatuses());
+            = this.jobRepository.findByAgentHostnameAndStatusIn(hostname, JobStatus.getActiveStatuses());
 
         return jobs
             .stream()
@@ -224,14 +223,16 @@ public class JpaJobSearchServiceImpl implements JobSearchService {
      * {@inheritDoc}
      */
     @Override
-    public List<String> getAllHostsWithActiveJobs() {
+    public Set<String> getAllHostsWithActiveJobs() {
         log.debug("Called");
 
         return this.jobRepository
-            .findByStatusIn(JobStatus.getActiveStatuses())
+            .findDistinctByStatusInAndV4IsFalse(JobStatus.getActiveStatuses())
             .stream()
-            .map(JobHostNameProjection::getHostName)
-            .collect(Collectors.toList());
+            .map(AgentHostnameProjection::getAgentHostname)
+            .filter(Optional::isPresent)
+            .map(Optional::get)
+            .collect(Collectors.toSet());
     }
 
     /**
@@ -345,9 +346,10 @@ public class JpaJobSearchServiceImpl implements JobSearchService {
     @Override
     public String getJobHost(@NotBlank final String jobId) throws GenieException {
         return this.jobRepository
-            .findByUniqueId(jobId, JobHostNameProjection.class)
+            .findByUniqueId(jobId, AgentHostnameProjection.class)
             .orElseThrow(() -> new GenieNotFoundException("No job execution found for id " + jobId))
-            .getHostName();
+            .getAgentHostname()
+            .orElseThrow(() -> new GenieNotFoundException("No hostname set for job " + jobId));
     }
 
     /**

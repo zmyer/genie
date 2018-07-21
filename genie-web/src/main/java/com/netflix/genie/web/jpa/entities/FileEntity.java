@@ -22,13 +22,13 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
-import org.hibernate.validator.constraints.Length;
-import org.hibernate.validator.constraints.NotBlank;
 
 import javax.persistence.Basic;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Table;
+import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.Size;
 
 /**
  * File Entity.
@@ -39,8 +39,8 @@ import javax.persistence.Table;
 @NoArgsConstructor
 @Getter
 @Setter
-@EqualsAndHashCode(of = "file", callSuper = false)
-@ToString(callSuper = true)
+@EqualsAndHashCode(callSuper = false, of = {"file"})
+@ToString(callSuper = true, of = {"file"})
 @Entity
 @Table(name = "files")
 public class FileEntity extends AuditEntity {
@@ -48,7 +48,7 @@ public class FileEntity extends AuditEntity {
     @Basic(optional = false)
     @Column(name = "file", nullable = false, unique = true, updatable = false)
     @NotBlank(message = "Must have a file location associated with this entity")
-    @Length(max = 1024, message = "Max length of a file is 1024 characters")
+    @Size(max = 1024, message = "Max length of a file is 1024 characters")
     private String file;
 
     /**

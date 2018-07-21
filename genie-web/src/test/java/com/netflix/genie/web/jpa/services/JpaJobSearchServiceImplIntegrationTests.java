@@ -54,7 +54,7 @@ import java.util.UUID;
 @Category(IntegrationTest.class)
 @DatabaseSetup("JpaJobSearchServiceImplIntegrationTests/init.xml")
 @DatabaseTearDown("cleanup.xml")
-public class JpaJobSearchServiceImplIntegrationTests extends DBUnitTestBase {
+public class JpaJobSearchServiceImplIntegrationTests extends DBIntegrationTestBase {
 
     private static final String JOB_1_ID = "job1";
     private static final String JOB_2_ID = "job2";
@@ -277,10 +277,9 @@ public class JpaJobSearchServiceImplIntegrationTests extends DBUnitTestBase {
         final String hostA = "a.netflix.com";
         final String hostB = "b.netflix.com";
 
-        final List<String> hostNames = this.service.getAllHostsWithActiveJobs();
+        final Set<String> hostNames = this.service.getAllHostsWithActiveJobs();
         Assert.assertThat(hostNames.size(), Matchers.is(2));
-        Assert.assertThat(hostNames, Matchers.hasItem(hostA));
-        Assert.assertThat(hostNames, Matchers.hasItem(hostB));
+        Assert.assertThat(hostNames, Matchers.hasItems(hostA, hostB));
     }
 
     /**

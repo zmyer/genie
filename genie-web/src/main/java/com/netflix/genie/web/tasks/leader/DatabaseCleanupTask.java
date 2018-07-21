@@ -18,23 +18,20 @@
 package com.netflix.genie.web.tasks.leader;
 
 import com.google.common.collect.Sets;
-import com.netflix.genie.web.jobs.JobConstants;
+import com.netflix.genie.common.internal.jobs.JobConstants;
 import com.netflix.genie.web.properties.DatabaseCleanupProperties;
-import com.netflix.genie.web.services.ClusterService;
-import com.netflix.genie.web.services.FileService;
+import com.netflix.genie.web.services.ClusterPersistenceService;
+import com.netflix.genie.web.services.FilePersistenceService;
 import com.netflix.genie.web.services.JobPersistenceService;
-import com.netflix.genie.web.services.TagService;
+import com.netflix.genie.web.services.TagPersistenceService;
 import com.netflix.genie.web.tasks.GenieTaskScheduleType;
 import com.netflix.genie.web.tasks.TaskUtils;
 import com.netflix.genie.web.util.MetricsUtils;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.Trigger;
 import org.springframework.scheduling.support.CronTrigger;
-import org.springframework.stereotype.Component;
 
 import javax.validation.constraints.NotNull;
 import java.time.Instant;
@@ -49,17 +46,15 @@ import java.util.concurrent.atomic.AtomicLong;
  * @author tgianos
  * @since 3.0.0
  */
-@ConditionalOnProperty("genie.tasks.databaseCleanup.enabled")
-@Component
 @Slf4j
 public class DatabaseCleanupTask extends LeadershipTask {
 
     private static final String DATABASE_CLEANUP_DURATION_TIMER_NAME = "genie.tasks.databaseCleanup.duration.timer";
     private final DatabaseCleanupProperties cleanupProperties;
     private final JobPersistenceService jobPersistenceService;
-    private final ClusterService clusterService;
-    private final FileService fileService;
-    private final TagService tagService;
+    private final ClusterPersistenceService clusterPersistenceService;
+    private final FilePersistenceService filePersistenceService;
+    private final TagPersistenceService tagPersistenceService;
 
     private final MeterRegistry registry;
     private final AtomicLong numDeletedJobs;
@@ -70,28 +65,27 @@ public class DatabaseCleanupTask extends LeadershipTask {
     /**
      * Constructor.
      *
-     * @param cleanupProperties     The properties to use to configure this task
-     * @param jobPersistenceService The persistence service to use to cleanup the data store
-     * @param clusterService        The cluster service to use to delete terminated clusters
-     * @param fileService           The file service to use to delete unused file references
-     * @param tagService            The tag service to use to delete unused tag references
-     * @param registry              The metrics registry
+     * @param cleanupProperties         The properties to use to configure this task
+     * @param jobPersistenceService     The persistence service to use to cleanup the data store
+     * @param clusterPersistenceService The cluster service to use to delete terminated clusters
+     * @param filePersistenceService    The file service to use to delete unused file references
+     * @param tagPersistenceService     The tag service to use to delete unused tag references
+     * @param registry                  The metrics registry
      */
-    @Autowired
     public DatabaseCleanupTask(
         @NotNull final DatabaseCleanupProperties cleanupProperties,
         @NotNull final JobPersistenceService jobPersistenceService,
-        @NotNull final ClusterService clusterService,
-        @NotNull final FileService fileService,
-        @NotNull final TagService tagService,
+        @NotNull final ClusterPersistenceService clusterPersistenceService,
+        @NotNull final FilePersistenceService filePersistenceService,
+        @NotNull final TagPersistenceService tagPersistenceService,
         @NotNull final MeterRegistry registry
     ) {
         this.registry = registry;
         this.cleanupProperties = cleanupProperties;
         this.jobPersistenceService = jobPersistenceService;
-        this.clusterService = clusterService;
-        this.fileService = fileService;
-        this.tagService = tagService;
+        this.clusterPersistenceService = clusterPersistenceService;
+        this.filePersistenceService = filePersistenceService;
+        this.tagPersistenceService = tagPersistenceService;
 
         this.numDeletedJobs = this.registry.gauge(
             "genie.tasks.databaseCleanup.numDeletedJobs.gauge",
@@ -153,7 +147,7 @@ public class DatabaseCleanupTask extends LeadershipTask {
                 log.debug("Skipping clusters cleanup");
                 this.numDeletedClusters.set(0);
             } else {
-                final long countDeletedClusters = this.clusterService.deleteTerminatedClusters();
+                final long countDeletedClusters = this.clusterPersistenceService.deleteTerminatedClusters();
                 log.info(
                     "Deleted {} clusters that were in TERMINATED state and weren't attached to any jobs",
                     countDeletedClusters
@@ -168,7 +162,7 @@ public class DatabaseCleanupTask extends LeadershipTask {
                 log.debug("Skipping files cleanup");
                 this.numDeletedFiles.set(0);
             } else {
-                final long countDeletedFiles = this.fileService.deleteUnusedFiles(creationThreshold);
+                final long countDeletedFiles = this.filePersistenceService.deleteUnusedFiles(creationThreshold);
                 log.info(
                     "Deleted {} files that were unused by any resource and created over an hour ago",
                     countDeletedFiles
@@ -180,7 +174,7 @@ public class DatabaseCleanupTask extends LeadershipTask {
                 log.debug("Skipping tags cleanup");
                 this.numDeletedTags.set(0);
             } else {
-                final long countDeletedTags = this.tagService.deleteUnusedTags(creationThreshold);
+                final long countDeletedTags = this.tagPersistenceService.deleteUnusedTags(creationThreshold);
                 log.info(
                     "Deleted {} tags that were unused by any resource and created over an hour ago",
                     countDeletedTags

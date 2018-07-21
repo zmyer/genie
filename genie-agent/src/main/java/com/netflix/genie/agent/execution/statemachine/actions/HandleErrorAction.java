@@ -18,11 +18,13 @@
 
 package com.netflix.genie.agent.execution.statemachine.actions;
 
+import com.netflix.genie.agent.execution.ExecutionContext;
+import com.netflix.genie.agent.execution.exceptions.ChangeJobStatusException;
+import com.netflix.genie.agent.execution.services.AgentJobService;
 import com.netflix.genie.agent.execution.statemachine.Events;
-import com.netflix.genie.agent.execution.statemachine.States;
+import com.netflix.genie.common.dto.JobStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.statemachine.StateContext;
 import org.springframework.stereotype.Component;
 
 /**
@@ -35,13 +37,45 @@ import org.springframework.stereotype.Component;
 @Slf4j
 class HandleErrorAction extends BaseStateAction implements StateAction.HandleError {
 
+    private final AgentJobService agentJobService;
+
+    HandleErrorAction(
+        final ExecutionContext executionContext,
+        final AgentJobService agentJobService
+    ) {
+        super(executionContext);
+        this.agentJobService = agentJobService;
+    }
+
     /**
      * {@inheritDoc}
      */
     @Override
-    protected Events executeStateAction(final StateContext<States, Events> context) {
-        log.info("Error...");
-        //TODO implement this action
+    protected Events executeStateAction(final ExecutionContext executionContext) {
+        log.info("Handling execution error");
+
+        final JobStatus currentJobStatus = executionContext.getCurrentJobStatus();
+        final String claimedJobId = executionContext.getClaimedJobId();
+
+        if (currentJobStatus != null && claimedJobId != null && currentJobStatus.isActive()) {
+            try {
+                agentJobService.changeJobStatus(
+                    claimedJobId,
+                    currentJobStatus,
+                    JobStatus.FAILED,
+                    "Setting failed status due to execution error"
+                );
+            } catch (ChangeJobStatusException e) {
+                log.error("Failed to update job status as part of execution error handling");
+            }
+        } else {
+            log.warn(
+                "Skipping job status update while handling error (currentStatus: {}, claimedJobId: {})",
+                currentJobStatus,
+                claimedJobId
+            );
+        }
+
         return Events.HANDLE_ERROR_COMPLETE;
     }
 }

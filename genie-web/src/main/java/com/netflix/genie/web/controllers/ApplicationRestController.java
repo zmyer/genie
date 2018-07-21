@@ -17,18 +17,25 @@
  */
 package com.netflix.genie.web.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.github.fge.jsonpatch.JsonPatch;
+import com.github.fge.jsonpatch.JsonPatchException;
+import com.google.common.collect.Lists;
 import com.netflix.genie.common.dto.Application;
 import com.netflix.genie.common.dto.ApplicationStatus;
 import com.netflix.genie.common.dto.CommandStatus;
 import com.netflix.genie.common.exceptions.GenieException;
+import com.netflix.genie.common.exceptions.GenieServerException;
+import com.netflix.genie.common.util.GenieObjectMapper;
 import com.netflix.genie.web.hateoas.assemblers.ApplicationResourceAssembler;
 import com.netflix.genie.web.hateoas.assemblers.CommandResourceAssembler;
 import com.netflix.genie.web.hateoas.resources.ApplicationResource;
 import com.netflix.genie.web.hateoas.resources.CommandResource;
-import com.netflix.genie.web.services.ApplicationService;
+import com.netflix.genie.web.services.ApplicationPersistenceService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -54,7 +61,10 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import java.io.IOException;
 import java.util.EnumSet;
+import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -69,24 +79,24 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ApplicationRestController {
 
-    private final ApplicationService applicationService;
+    private final ApplicationPersistenceService applicationPersistenceService;
     private final ApplicationResourceAssembler applicationResourceAssembler;
     private final CommandResourceAssembler commandResourceAssembler;
 
     /**
      * Constructor.
      *
-     * @param applicationService           The application configuration service to use.
-     * @param applicationResourceAssembler The assembler used to create Application resources.
-     * @param commandResourceAssembler     The assembler used to create Command resources.
+     * @param applicationPersistenceService The application configuration service to use.
+     * @param applicationResourceAssembler  The assembler used to create Application resources.
+     * @param commandResourceAssembler      The assembler used to create Command resources.
      */
     @Autowired
     public ApplicationRestController(
-        final ApplicationService applicationService,
+        final ApplicationPersistenceService applicationPersistenceService,
         final ApplicationResourceAssembler applicationResourceAssembler,
         final CommandResourceAssembler commandResourceAssembler
     ) {
-        this.applicationService = applicationService;
+        this.applicationPersistenceService = applicationPersistenceService;
         this.applicationResourceAssembler = applicationResourceAssembler;
         this.commandResourceAssembler = commandResourceAssembler;
     }
@@ -102,7 +112,9 @@ public class ApplicationRestController {
     @ResponseStatus(HttpStatus.CREATED)
     public ResponseEntity<Void> createApplication(@RequestBody final Application app) throws GenieException {
         log.debug("Called to create new application");
-        final String id = this.applicationService.createApplication(app);
+        final String id = this.applicationPersistenceService.createApplication(
+            DtoConverters.toV4ApplicationRequest(app)
+        );
         final HttpHeaders httpHeaders = new HttpHeaders();
         httpHeaders.setLocation(
             ServletUriComponentsBuilder
@@ -123,7 +135,7 @@ public class ApplicationRestController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteAllApplications() throws GenieException {
         log.debug("Delete all Applications");
-        this.applicationService.deleteAllApplications();
+        this.applicationPersistenceService.deleteAllApplications();
     }
 
     /**
@@ -161,6 +173,54 @@ public class ApplicationRestController {
             }
         }
 
+        final Page<Application> applications;
+        if (tags != null && tags.stream().filter(tag -> tag.startsWith(DtoConverters.GENIE_ID_PREFIX)).count() >= 1L) {
+            // TODO: This doesn't take into account others as compounded find...not sure if good or bad
+            final List<Application> applicationList = Lists.newArrayList();
+            final int prefixLength = DtoConverters.GENIE_ID_PREFIX.length();
+            tags
+                .stream()
+                .filter(tag -> tag.startsWith(DtoConverters.GENIE_ID_PREFIX))
+                .forEach(
+                    tag -> {
+                        final String id = tag.substring(prefixLength);
+                        try {
+                            applicationList.add(
+                                DtoConverters.toV3Application(this.applicationPersistenceService.getApplication(id))
+                            );
+                        } catch (final GenieException ge) {
+                            log.debug("No application with id {} found", id, ge);
+                        }
+                    }
+                );
+            applications = new PageImpl<>(applicationList);
+        } else if (tags != null
+            && tags.stream().filter(tag -> tag.startsWith(DtoConverters.GENIE_NAME_PREFIX)).count() >= 1L) {
+            final Set<String> finalTags = tags
+                .stream()
+                .filter(tag -> !tag.startsWith(DtoConverters.GENIE_NAME_PREFIX))
+                .collect(Collectors.toSet());
+            if (name == null) {
+                final Optional<String> finalName = tags
+                    .stream()
+                    .filter(tag -> tag.startsWith(DtoConverters.GENIE_NAME_PREFIX))
+                    .map(tag -> tag.substring(DtoConverters.GENIE_NAME_PREFIX.length()))
+                    .findFirst();
+
+                applications = this.applicationPersistenceService
+                    .getApplications(finalName.orElse(null), user, enumStatuses, finalTags, type, page)
+                    .map(DtoConverters::toV3Application);
+            } else {
+                applications = this.applicationPersistenceService
+                    .getApplications(name, user, enumStatuses, finalTags, type, page)
+                    .map(DtoConverters::toV3Application);
+            }
+        } else {
+            applications = this.applicationPersistenceService
+                .getApplications(name, user, enumStatuses, tags, type, page)
+                .map(DtoConverters::toV3Application);
+        }
+
         final Link self = ControllerLinkBuilder.linkTo(
             ControllerLinkBuilder
                 .methodOn(ApplicationRestController.class)
@@ -168,7 +228,7 @@ public class ApplicationRestController {
         ).withSelfRel();
 
         return assembler.toResource(
-            this.applicationService.getApplications(name, user, enumStatuses, tags, type, page),
+            applications,
             this.applicationResourceAssembler,
             self
         );
@@ -185,7 +245,9 @@ public class ApplicationRestController {
     @ResponseStatus(HttpStatus.OK)
     public ApplicationResource getApplication(@PathVariable("id") final String id) throws GenieException {
         log.debug("Called to get Application for id {}", id);
-        return this.applicationResourceAssembler.toResource(this.applicationService.getApplication(id));
+        return this.applicationResourceAssembler.toResource(
+            DtoConverters.toV3Application(this.applicationPersistenceService.getApplication(id))
+        );
     }
 
     /**
@@ -202,7 +264,7 @@ public class ApplicationRestController {
         @RequestBody final Application updateApp
     ) throws GenieException {
         log.debug("called to update application {} with info {}", id, updateApp);
-        this.applicationService.updateApplication(id, updateApp);
+        this.applicationPersistenceService.updateApplication(id, DtoConverters.toV4Application(updateApp));
     }
 
     /**
@@ -219,7 +281,21 @@ public class ApplicationRestController {
         @RequestBody final JsonPatch patch
     ) throws GenieException {
         log.debug("Called to patch application {} with patch {}", id, patch);
-        this.applicationService.patchApplication(id, patch);
+        final Application currentApp = DtoConverters.toV3Application(
+            this.applicationPersistenceService.getApplication(id)
+        );
+
+        try {
+            log.debug("Will patch application {}. Original state: {}", id, currentApp);
+            final JsonNode applicationNode = GenieObjectMapper.getMapper().valueToTree(currentApp);
+            final JsonNode postPatchNode = patch.apply(applicationNode);
+            final Application patchedApp = GenieObjectMapper.getMapper().treeToValue(postPatchNode, Application.class);
+            log.debug("Finished patching application {}. New state: {}", id, patchedApp);
+            this.applicationPersistenceService.updateApplication(id, DtoConverters.toV4Application(patchedApp));
+        } catch (final JsonPatchException | IOException e) {
+            log.error("Unable to patch application {} with patch {} due to exception.", id, patch, e);
+            throw new GenieServerException(e.getLocalizedMessage(), e);
+        }
     }
 
     /**
@@ -232,7 +308,7 @@ public class ApplicationRestController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteApplication(@PathVariable("id") final String id) throws GenieException {
         log.debug("Delete an application with id {}", id);
-        this.applicationService.deleteApplication(id);
+        this.applicationPersistenceService.deleteApplication(id);
     }
 
     /**
@@ -250,7 +326,7 @@ public class ApplicationRestController {
         @RequestBody final Set<String> configs
     ) throws GenieException {
         log.debug("Called with id {} and config {}", id, configs);
-        this.applicationService.addConfigsToApplication(id, configs);
+        this.applicationPersistenceService.addConfigsToApplication(id, configs);
     }
 
     /**
@@ -265,7 +341,7 @@ public class ApplicationRestController {
     @ResponseStatus(HttpStatus.OK)
     public Set<String> getConfigsForApplication(@PathVariable("id") final String id) throws GenieException {
         log.debug("Called with id {}", id);
-        return this.applicationService.getConfigsForApplication(id);
+        return this.applicationPersistenceService.getConfigsForApplication(id);
     }
 
     /**
@@ -284,7 +360,7 @@ public class ApplicationRestController {
         @RequestBody final Set<String> configs
     ) throws GenieException {
         log.debug("Called with id {} and configs {}", id, configs);
-        this.applicationService.updateConfigsForApplication(id, configs);
+        this.applicationPersistenceService.updateConfigsForApplication(id, configs);
     }
 
     /**
@@ -298,7 +374,7 @@ public class ApplicationRestController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void removeAllConfigsForApplication(@PathVariable("id") final String id) throws GenieException {
         log.debug("Called with id {}", id);
-        this.applicationService.removeAllConfigsForApplication(id);
+        this.applicationPersistenceService.removeAllConfigsForApplication(id);
     }
 
     /**
@@ -316,7 +392,7 @@ public class ApplicationRestController {
         @RequestBody final Set<String> dependencies
     ) throws GenieException {
         log.debug("Called with id {} and dependencies {}", id, dependencies);
-        this.applicationService.addDependenciesForApplication(id, dependencies);
+        this.applicationPersistenceService.addDependenciesForApplication(id, dependencies);
     }
 
     /**
@@ -331,7 +407,7 @@ public class ApplicationRestController {
     @ResponseStatus(HttpStatus.OK)
     public Set<String> getDependenciesForApplication(@PathVariable("id") final String id) throws GenieException {
         log.debug("Called with id {}", id);
-        return this.applicationService.getDependenciesForApplication(id);
+        return this.applicationPersistenceService.getDependenciesForApplication(id);
     }
 
     /**
@@ -350,7 +426,7 @@ public class ApplicationRestController {
         @RequestBody final Set<String> dependencies
     ) throws GenieException {
         log.debug("Called with id {} and dependencies {}", id, dependencies);
-        this.applicationService.updateDependenciesForApplication(id, dependencies);
+        this.applicationPersistenceService.updateDependenciesForApplication(id, dependencies);
     }
 
     /**
@@ -364,7 +440,7 @@ public class ApplicationRestController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void removeAllDependenciesForApplication(@PathVariable("id") final String id) throws GenieException {
         log.debug("Called with id {}", id);
-        this.applicationService.removeAllDependenciesForApplication(id);
+        this.applicationPersistenceService.removeAllDependenciesForApplication(id);
     }
 
     /**
@@ -382,7 +458,7 @@ public class ApplicationRestController {
         @RequestBody final Set<String> tags
     ) throws GenieException {
         log.debug("Called with id {} and config {}", id, tags);
-        this.applicationService.addTagsForApplication(id, tags);
+        this.applicationPersistenceService.addTagsForApplication(id, tags);
     }
 
     /**
@@ -397,7 +473,7 @@ public class ApplicationRestController {
     @ResponseStatus(HttpStatus.OK)
     public Set<String> getTagsForApplication(@PathVariable("id") final String id) throws GenieException {
         log.debug("Called with id {}", id);
-        return this.applicationService.getTagsForApplication(id);
+        return DtoConverters.toV3Application(this.applicationPersistenceService.getApplication(id)).getTags();
     }
 
     /**
@@ -416,7 +492,7 @@ public class ApplicationRestController {
         @RequestBody final Set<String> tags
     ) throws GenieException {
         log.debug("Called with id {} and tags {}", id, tags);
-        this.applicationService.updateTagsForApplication(id, tags);
+        this.applicationPersistenceService.updateTagsForApplication(id, tags);
     }
 
     /**
@@ -430,7 +506,7 @@ public class ApplicationRestController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void removeAllTagsForApplication(@PathVariable("id") final String id) throws GenieException {
         log.debug("Called with id {}", id);
-        this.applicationService.removeAllTagsForApplication(id);
+        this.applicationPersistenceService.removeAllTagsForApplication(id);
     }
 
     /**
@@ -448,7 +524,7 @@ public class ApplicationRestController {
         @PathVariable("tag") final String tag
     ) throws GenieException {
         log.debug("Called with id {} and tag {}", id, tag);
-        this.applicationService.removeTagForApplication(id, tag);
+        this.applicationPersistenceService.removeTagForApplication(id, tag);
     }
 
     /**
@@ -475,8 +551,9 @@ public class ApplicationRestController {
             }
         }
 
-        return this.applicationService.getCommandsForApplication(id, enumStatuses)
+        return this.applicationPersistenceService.getCommandsForApplication(id, enumStatuses)
             .stream()
+            .map(DtoConverters::toV3Command)
             .map(this.commandResourceAssembler::toResource)
             .collect(Collectors.toSet());
     }

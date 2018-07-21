@@ -19,7 +19,6 @@ package com.netflix.genie;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.jmx.JmxAutoConfiguration;
 
 /**
  * Genie Agent application.
@@ -27,14 +26,10 @@ import org.springframework.boot.autoconfigure.jmx.JmxAutoConfiguration;
  * @author mprimi
  * @since 4.0.0
  */
-@SpringBootApplication(
-    exclude = {
-        JmxAutoConfiguration.class,
-    }
-)
+@SpringBootApplication
 public class GenieAgentApplication {
     /**
-     * Main method, actual execution is delegated to GenieAgentRunnner.
+     * Main method, actual execution is delegated to GenieAgentRunner.
      *
      * @param args command-line arguments
      */
@@ -43,10 +38,9 @@ public class GenieAgentApplication {
     }
 
     private int run(final String[] args) {
-        return SpringApplication.exit(
-            SpringApplication.run(
-                GenieAgentApplication.class, args
-            )
-        );
+        final SpringApplication app = new SpringApplication(GenieAgentApplication.class);
+        // Disable parsing of command-line arguments into properties.
+        app.setAddCommandLineProperties(false);
+        return SpringApplication.exit(app.run(args));
     }
 }

@@ -110,7 +110,7 @@ public class ApplicationEntityUnitTests extends EntityTestsBase {
      */
     @Test(expected = ConstraintViolationException.class)
     public void testValidateNoVersion() {
-        this.a.setVersion(" ");
+        this.a.setVersion("");
         this.validate(this.a);
     }
 

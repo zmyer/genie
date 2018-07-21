@@ -1,0 +1,27 @@
+apply plugin: "java-library"
+
+dependencies {
+    /*******************************
+     * API Dependencies
+     *******************************/
+
+    /*******************************
+     * Implementation Dependencies
+     *******************************/
+
+     implementation(project(":genie-common"))
+
+    /*******************************
+     * Provided Dependencies
+     *******************************/
+
+    /*******************************
+     * Runtime Dependencies
+     *******************************/
+
+    /*******************************
+     * Test Dependencies
+     *******************************/
+
+    testImplementation(project(":genie-test"))
+}

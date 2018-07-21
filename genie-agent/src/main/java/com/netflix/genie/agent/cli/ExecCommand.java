@@ -18,14 +18,19 @@
 
 package com.netflix.genie.agent.cli;
 
-import com.beust.jcommander.Parameter;
 import com.beust.jcommander.Parameters;
+import com.beust.jcommander.ParametersDelegate;
+import com.netflix.genie.agent.execution.ExecutionContext;
 import com.netflix.genie.agent.execution.statemachine.JobExecutionStateMachine;
 import com.netflix.genie.agent.execution.statemachine.States;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Triple;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.statemachine.action.Action;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 /**
  * Command to execute a Genie job.
@@ -40,13 +45,16 @@ class ExecCommand implements AgentCommand {
 
     private final ExecCommandArguments execCommandArguments;
     private final JobExecutionStateMachine stateMachine;
+    private final ExecutionContext executionContext;
 
     ExecCommand(
         final ExecCommandArguments execCommandArguments,
-        final JobExecutionStateMachine stateMachine
+        final JobExecutionStateMachine stateMachine,
+        final ExecutionContext executionContext
     ) {
         this.execCommandArguments = execCommandArguments;
         this.stateMachine = stateMachine;
+        this.executionContext = executionContext;
     }
 
     @Override
@@ -63,19 +71,52 @@ class ExecCommand implements AgentCommand {
         }
 
         if (!States.END.equals(finalstate)) {
-            log.warn("Job execution failed with with exception");
-            throw new RuntimeException("Job execution failed (final state: {})" + finalstate);
+            throw new RuntimeException("Job execution failed (final state: " + finalstate + ")");
         }
 
-        log.info("Job execution completed");
+        if (executionContext.hasStateActionError()) {
+            final List<Triple<States, Class<? extends Action>, Exception>> actionErrors
+                = executionContext.getStateActionErrors();
+            actionErrors.forEach(
+                triple -> log.error(
+                    "Action {} in state {} failed with {}: {}",
+                    triple.getMiddle().getSimpleName(),
+                    triple.getLeft(),
+                    triple.getRight().getClass().getSimpleName(),
+                    triple.getRight().getMessage()
+                ));
+
+            final Exception firstActionErrorException = actionErrors.get(0).getRight();
+
+            throw new RuntimeException("Job execution error", firstActionErrorException);
+        }
+
+        log.info("Job execution completed successfully");
+
     }
 
     @Component
     @Parameters(commandNames = CommandNames.EXEC, commandDescription = "Execute a Genie job")
     @Getter
     static class ExecCommandArguments implements AgentCommandArguments {
-        @Parameter(names = "timeout", description = "Job execution timeout")
-        private int jobTimeout = 2000;
+        @ParametersDelegate
+        private final ArgumentDelegates.ServerArguments serverArguments;
+
+        @ParametersDelegate
+        private final ArgumentDelegates.CacheArguments cacheArguments;
+
+        @ParametersDelegate
+        private final ArgumentDelegates.JobRequestArguments jobRequestArguments;
+
+        ExecCommandArguments(
+            final ArgumentDelegates.ServerArguments serverArguments,
+            final ArgumentDelegates.CacheArguments cacheArguments,
+            final ArgumentDelegates.JobRequestArguments jobRequestArguments
+        ) {
+            this.serverArguments = serverArguments;
+            this.cacheArguments = cacheArguments;
+            this.jobRequestArguments = jobRequestArguments;
+        }
 
         @Override
         public Class<? extends AgentCommand> getConsumerClass() {

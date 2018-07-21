@@ -17,11 +17,9 @@
  */
 package com.netflix.genie.web.services.impl;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
-import com.netflix.genie.common.dto.Application;
-import com.netflix.genie.common.dto.Cluster;
-import com.netflix.genie.common.dto.Command;
 import com.netflix.genie.common.dto.Job;
 import com.netflix.genie.common.dto.JobExecution;
 import com.netflix.genie.common.dto.JobMetadata;
@@ -33,39 +31,36 @@ import com.netflix.genie.common.exceptions.GeniePreconditionException;
 import com.netflix.genie.common.exceptions.GenieServerException;
 import com.netflix.genie.common.exceptions.GenieServerUnavailableException;
 import com.netflix.genie.common.exceptions.GenieUserLimitExceededException;
-import com.netflix.genie.web.jobs.JobConstants;
+import com.netflix.genie.common.internal.dto.v4.Application;
+import com.netflix.genie.common.internal.dto.v4.Cluster;
+import com.netflix.genie.common.internal.dto.v4.Command;
+import com.netflix.genie.common.internal.dto.v4.JobSpecification;
+import com.netflix.genie.common.internal.jobs.JobConstants;
+import com.netflix.genie.web.controllers.DtoConverters;
 import com.netflix.genie.web.properties.JobsProperties;
 import com.netflix.genie.web.properties.JobsUsersActiveLimitProperties;
-import com.netflix.genie.web.services.ApplicationService;
-import com.netflix.genie.web.services.ClusterLoadBalancer;
-import com.netflix.genie.web.services.ClusterService;
-import com.netflix.genie.web.services.CommandService;
+import com.netflix.genie.web.services.ApplicationPersistenceService;
+import com.netflix.genie.web.services.ClusterPersistenceService;
+import com.netflix.genie.web.services.CommandPersistenceService;
 import com.netflix.genie.web.services.JobCoordinatorService;
 import com.netflix.genie.web.services.JobKillService;
 import com.netflix.genie.web.services.JobPersistenceService;
 import com.netflix.genie.web.services.JobSearchService;
+import com.netflix.genie.web.services.JobSpecificationService;
 import com.netflix.genie.web.services.JobStateService;
-import com.netflix.genie.web.util.MetricsConstants;
 import com.netflix.genie.web.util.MetricsUtils;
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.hibernate.validator.constraints.NotBlank;
-import org.hibernate.validator.constraints.NotEmpty;
-import org.springframework.aop.TargetClassAware;
 
 import javax.validation.Valid;
+import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-
 
 /**
  * Implementation of the JobCoordinatorService APIs.
@@ -78,79 +73,66 @@ import java.util.stream.Collectors;
 public class JobCoordinatorServiceImpl implements JobCoordinatorService {
 
     static final String OVERALL_COORDINATION_TIMER_NAME = "genie.jobs.coordination.timer";
-    static final String CLUSTER_COMMAND_QUERY_TIMER_NAME = "genie.jobs.coordination.clusterCommandQuery.timer";
-    static final String SELECT_CLUSTER_TIMER_NAME = "genie.jobs.submit.localRunner.selectCluster.timer";
-    static final String SELECT_COMMAND_TIMER_NAME = "genie.jobs.submit.localRunner.selectCommand.timer";
-    static final String SELECT_APPLICATIONS_TIMER_NAME = "genie.jobs.submit.localRunner.selectApplications.timer";
     static final String SET_JOB_ENVIRONMENT_TIMER_NAME = "genie.jobs.submit.localRunner.setJobEnvironment.timer";
-    static final String SELECT_LOAD_BALANCER_COUNTER_NAME = "genie.jobs.submit.selectCluster.loadBalancer.counter";
 
     private static final String NO_ID_FOUND = "No id found";
-    private static final String LOAD_BALANCER_STATUS_SUCCESS = "success";
-    private static final String LOAD_BALANCER_STATUS_NO_PREFERENCE = "no preference";
-    private static final String LOAD_BALANCER_STATUS_EXCEPTION = "exception";
-    private static final String LOAD_BALANCER_STATUS_INVALID = "invalid";
 
     private final JobPersistenceService jobPersistenceService;
     private final JobKillService jobKillService;
     private final JobStateService jobStateService;
-    private final ApplicationService applicationService;
+    private final ApplicationPersistenceService applicationPersistenceService;
     private final JobSearchService jobSearchService;
-    private final ClusterService clusterService;
-    private final CommandService commandService;
-    private final List<ClusterLoadBalancer> clusterLoadBalancers;
+    private final ClusterPersistenceService clusterPersistenceService;
+    private final CommandPersistenceService commandPersistenceService;
+    private final JobSpecificationService specificationService;
     private final JobsProperties jobsProperties;
-    private final String hostName;
+    private final String hostname;
 
     // Metrics
     private final MeterRegistry registry;
-    private final Counter noClusterSelectedCounter;
-    private final Counter noClusterFoundCounter;
 
     /**
      * Constructor.
      *
-     * @param jobPersistenceService implementation of job persistence service interface
-     * @param jobKillService        The job kill service to use
-     * @param jobStateService       The service where we report the job state and keep track of various metrics about
-     *                              jobs currently running
-     * @param jobsProperties        The jobs properties to use
-     * @param applicationService    Implementation of application service interface
-     * @param jobSearchService      Implementation of job search service
-     * @param clusterService        Implementation of cluster service interface
-     * @param commandService        Implementation of command service interface
-     * @param clusterLoadBalancers  Implementations of the cluster load balancer interface in invocation order
-     * @param registry              The registry
-     * @param hostName              The name of the host this Genie instance is running on
+     * @param jobPersistenceService         implementation of job persistence service interface
+     * @param jobKillService                The job kill service to use
+     * @param jobStateService               The service where we report the job state and keep track of
+     *                                      various metrics about jobs currently running
+     * @param jobsProperties                The jobs properties to use
+     * @param applicationPersistenceService Implementation of application service interface
+     * @param jobSearchService              Implementation of job search service
+     * @param clusterPersistenceService     Implementation of cluster service interface
+     * @param commandPersistenceService     Implementation of command service interface
+     * @param specificationService          The job specification service to use
+     * @param registry                      The registry
+     * @param hostname                      The name of the host this Genie instance is running on
      */
     public JobCoordinatorServiceImpl(
         @NotNull final JobPersistenceService jobPersistenceService,
         @NotNull final JobKillService jobKillService,
         @NotNull final JobStateService jobStateService,
         @NotNull final JobsProperties jobsProperties,
-        @NotNull final ApplicationService applicationService,
+        @NotNull final ApplicationPersistenceService applicationPersistenceService,
         @NotNull final JobSearchService jobSearchService,
-        @NotNull final ClusterService clusterService,
-        @NotNull final CommandService commandService,
-        @NotNull @NotEmpty final List<ClusterLoadBalancer> clusterLoadBalancers,
+        @NotNull final ClusterPersistenceService clusterPersistenceService,
+        @NotNull final CommandPersistenceService commandPersistenceService,
+        @NotNull final JobSpecificationService specificationService,
         @NotNull final MeterRegistry registry,
-        @NotBlank final String hostName
+        @NotBlank final String hostname
     ) {
         this.jobPersistenceService = jobPersistenceService;
         this.jobKillService = jobKillService;
         this.jobStateService = jobStateService;
-        this.applicationService = applicationService;
+        this.applicationPersistenceService = applicationPersistenceService;
         this.jobSearchService = jobSearchService;
-        this.clusterService = clusterService;
-        this.commandService = commandService;
-        this.clusterLoadBalancers = clusterLoadBalancers;
+        this.clusterPersistenceService = clusterPersistenceService;
+        this.commandPersistenceService = commandPersistenceService;
+        this.specificationService = specificationService;
         this.jobsProperties = jobsProperties;
-        this.hostName = hostName;
+        this.hostname = hostname;
 
         // Metrics
         this.registry = registry;
-        this.noClusterSelectedCounter = registry.counter("genie.jobs.submit.selectCluster.noneSelected.counter");
-        this.noClusterFoundCounter = registry.counter("genie.jobs.submit.selectCluster.noneFound.counter");
     }
 
     /**
@@ -197,9 +179,8 @@ public class JobCoordinatorServiceImpl implements JobCoordinatorService {
                 );
             }
 
-            final JobExecution jobExecution = new JobExecution.Builder(
-                this.hostName
-            )
+            final JobExecution jobExecution = new JobExecution
+                .Builder(this.hostname)
                 .withId(jobId)
                 .build();
 
@@ -207,16 +188,28 @@ public class JobCoordinatorServiceImpl implements JobCoordinatorService {
             this.jobPersistenceService.createJob(jobRequest, jobMetadata, jobBuilder.build(), jobExecution);
             this.jobStateService.init(jobId);
             log.info("Finding possible clusters and commands for job {}", jobRequest.getId().orElse(NO_ID_FOUND));
-            final Map<Cluster, String> clustersAndCommandsForJob = this.queryForClustersAndCommands(jobRequest);
-            // Resolve the cluster for the job request based on the tags specified
-            final Cluster cluster = this.selectCluster(jobRequest, clustersAndCommandsForJob.keySet());
-            // Resolve the command for the job request based on command tags and cluster chosen
-            final Command command = this.getCommand(clustersAndCommandsForJob.get(cluster), jobId);
-            // Resolve the applications to use based on the command that was selected
-            final List<Application> applications = this.getApplications(jobRequest, command);
+            final JobSpecification jobSpecification;
+            try {
+                jobSpecification = this.specificationService.resolveJobSpecification(
+                    jobId,
+                    DtoConverters.toV4JobRequest(jobRequest)
+                );
+            } catch (final RuntimeException re) {
+                //TODO: Here for now as we figure out what to do with exceptions for JobSpecificationServiceImpl
+                throw new GeniePreconditionException(re.getMessage(), re);
+            }
+            final Cluster cluster = this.clusterPersistenceService.getCluster(jobSpecification.getCluster().getId());
+            final Command command = this.commandPersistenceService.getCommand(jobSpecification.getCommand().getId());
+
             // Now that we have command how much memory should the job use?
             final int memory = jobRequest.getMemory()
                 .orElse(command.getMemory().orElse(this.jobsProperties.getMemory().getDefaultJobMemory()));
+
+            final ImmutableList.Builder<Application> applicationsBuilder = ImmutableList.builder();
+            for (final JobSpecification.ExecutionResource applicationResource : jobSpecification.getApplications()) {
+                applicationsBuilder.add(this.applicationPersistenceService.getApplication(applicationResource.getId()));
+            }
+            final ImmutableList<Application> applications = applicationsBuilder.build();
 
             // Save all the runtime information
             this.setRuntimeEnvironment(jobId, cluster, command, applications, memory);
@@ -260,7 +253,14 @@ public class JobCoordinatorServiceImpl implements JobCoordinatorService {
                     );
                     // Tell the system a new job has been scheduled so any actions can be taken
                     log.info("Publishing job scheduled event for job {}", jobId);
-                    this.jobStateService.schedule(jobId, jobRequest, cluster, command, applications, memory);
+                    this.jobStateService.schedule(
+                        jobId,
+                        jobRequest,
+                        cluster,
+                        command,
+                        applications,
+                        memory
+                    );
                     MetricsUtils.addSuccessTags(tags);
                     return jobId;
                 } else {
@@ -331,12 +331,8 @@ public class JobCoordinatorServiceImpl implements JobCoordinatorService {
         final long jobEnvironmentStart = System.nanoTime();
         final Set<Tag> tags = Sets.newHashSet();
         try {
-            final String clusterId = cluster
-                .getId()
-                .orElseThrow(() -> new GenieServerException("Cluster has no id"));
-            final String commandId = command
-                .getId()
-                .orElseThrow(() -> new GenieServerException("Command has no id"));
+            final String clusterId = cluster.getId();
+            final String commandId = command.getId();
             this.jobPersistenceService.updateJobWithRuntimeEnvironment(
                 jobId,
                 clusterId,
@@ -344,8 +340,6 @@ public class JobCoordinatorServiceImpl implements JobCoordinatorService {
                 applications
                     .stream()
                     .map(Application::getId)
-                    .filter(Optional::isPresent)
-                    .map(Optional::get)
                     .collect(Collectors.toList()),
                 memory
             );
@@ -357,179 +351,6 @@ public class JobCoordinatorServiceImpl implements JobCoordinatorService {
             this.registry
                 .timer(SET_JOB_ENVIRONMENT_TIMER_NAME, tags)
                 .record(System.nanoTime() - jobEnvironmentStart, TimeUnit.NANOSECONDS);
-        }
-    }
-
-    private Map<Cluster, String> queryForClustersAndCommands(final JobRequest jobRequest) throws GenieException {
-        final long start = System.nanoTime();
-        final Set<Tag> tags = Sets.newHashSet();
-        try {
-            final Map<Cluster, String> clustersAndCommands
-                = this.clusterService.findClustersAndCommandsForJob(jobRequest);
-            MetricsUtils.addSuccessTags(tags);
-            return clustersAndCommands;
-        } catch (final Throwable t) {
-            MetricsUtils.addFailureTagsWithException(tags, t);
-            throw t;
-        } finally {
-            this.registry
-                .timer(CLUSTER_COMMAND_QUERY_TIMER_NAME, tags)
-                .record(System.nanoTime() - start, TimeUnit.NANOSECONDS);
-        }
-    }
-
-    private Cluster selectCluster(final JobRequest jobRequest, final Set<Cluster> clusters) throws GenieException {
-        final long start = System.nanoTime();
-        final Set<Tag> timerTags = Sets.newHashSet();
-        final Set<Tag> counterTags = Sets.newHashSet();
-        try {
-            Cluster cluster = null;
-            if (clusters.isEmpty()) {
-                this.noClusterFoundCounter.increment();
-                throw new GeniePreconditionException(
-                    "No cluster/command combination found for the given criteria. Unable to continue"
-                );
-            } else if (clusters.size() == 1) {
-                cluster = clusters
-                    .stream()
-                    .findFirst()
-                    .orElseThrow(() -> new GenieServerException("Couldn't get cluster when size was one"));
-            } else {
-                for (final ClusterLoadBalancer loadBalancer : this.clusterLoadBalancers) {
-                    final String loadBalancerClass;
-                    if (loadBalancer instanceof TargetClassAware) {
-                        final Class<?> targetClass = ((TargetClassAware) loadBalancer).getTargetClass();
-                        if (targetClass != null) {
-                            loadBalancerClass = targetClass.getCanonicalName();
-                        } else {
-                            loadBalancerClass = loadBalancer.getClass().getCanonicalName();
-                        }
-                    } else {
-                        loadBalancerClass = loadBalancer.getClass().getCanonicalName();
-                    }
-                    counterTags.add(Tag.of(MetricsConstants.TagKeys.CLASS_NAME, loadBalancerClass));
-                    try {
-                        final Cluster selectedCluster = loadBalancer.selectCluster(clusters, jobRequest);
-                        if (selectedCluster != null) {
-                            // Make sure the cluster existed in the original list of clusters
-                            if (clusters.contains(selectedCluster)) {
-                                log.debug(
-                                    "Successfully selected cluster {} using load balancer {}",
-                                    selectedCluster.getId().orElse(NO_ID_FOUND),
-                                    loadBalancerClass
-                                );
-                                counterTags.add(Tag.of(MetricsConstants.TagKeys.STATUS, LOAD_BALANCER_STATUS_SUCCESS));
-                                this.registry.counter(SELECT_LOAD_BALANCER_COUNTER_NAME, counterTags).increment();
-                                cluster = selectedCluster;
-                                break;
-                            } else {
-                                log.error(
-                                    "Successfully selected cluster {} using load balancer {} but "
-                                        + "it wasn't in original cluster list {}",
-                                    selectedCluster.getId().orElse(NO_ID_FOUND),
-                                    loadBalancerClass,
-                                    clusters
-                                );
-                                counterTags.add(Tag.of(MetricsConstants.TagKeys.STATUS, LOAD_BALANCER_STATUS_INVALID));
-                                this.registry.counter(SELECT_LOAD_BALANCER_COUNTER_NAME, counterTags).increment();
-                            }
-                        } else {
-                            counterTags.add(
-                                Tag.of(MetricsConstants.TagKeys.STATUS, LOAD_BALANCER_STATUS_NO_PREFERENCE)
-                            );
-                            this.registry.counter(SELECT_LOAD_BALANCER_COUNTER_NAME, counterTags).increment();
-                        }
-                    } catch (final Exception e) {
-                        log.error("Cluster load balancer {} threw exception:", loadBalancer, e);
-                        counterTags.add(Tag.of(MetricsConstants.TagKeys.STATUS, LOAD_BALANCER_STATUS_EXCEPTION));
-                        this.registry.counter(SELECT_LOAD_BALANCER_COUNTER_NAME, counterTags).increment();
-                    }
-                }
-
-                // Make sure we selected a cluster
-                if (cluster == null) {
-                    this.noClusterSelectedCounter.increment();
-                    throw new GeniePreconditionException(
-                        "Unable to select a cluster from using any of the available load balancer's."
-                    );
-                }
-            }
-
-            log.info(
-                "Selected cluster {} for job {}",
-                cluster.getId().orElse(NO_ID_FOUND),
-                jobRequest.getId().orElse(NO_ID_FOUND)
-            );
-            MetricsUtils.addSuccessTags(timerTags);
-            return cluster;
-        } catch (final Throwable t) {
-            MetricsUtils.addFailureTagsWithException(timerTags, t);
-            throw t;
-        } finally {
-            this.registry
-                .timer(SELECT_CLUSTER_TIMER_NAME, timerTags)
-                .record(System.nanoTime() - start, TimeUnit.NANOSECONDS);
-        }
-    }
-
-    private Command getCommand(final String commandId, final String jobId) throws GenieException {
-        final long start = System.nanoTime();
-        final Set<Tag> tags = Sets.newHashSet();
-        try {
-            log.info("Selecting command for job {} ", jobId);
-            final Command command = this.commandService.getCommand(commandId);
-            log.info("Selected command {} for job {} ", commandId, jobId);
-            MetricsUtils.addSuccessTags(tags);
-            return command;
-        } catch (final Throwable t) {
-            MetricsUtils.addFailureTagsWithException(tags, t);
-            throw t;
-        } finally {
-            this.registry
-                .timer(SELECT_COMMAND_TIMER_NAME, tags)
-                .record(System.nanoTime() - start, TimeUnit.NANOSECONDS);
-        }
-    }
-
-    private List<Application> getApplications(
-        final JobRequest jobRequest,
-        final Command command
-    ) throws GenieException {
-        final long start = System.nanoTime();
-        final Set<Tag> tags = Sets.newHashSet();
-        try {
-            final String jobId = jobRequest.getId().orElseThrow(() -> new GenieServerException("No job Id"));
-            final String commandId = command.getId().orElseThrow(() -> new GenieServerException("No command Id"));
-            log.info("Selecting applications for job {} and command {}", jobId, commandId);
-            // TODO: What do we do about application status? Should probably check here
-            final List<Application> applications = new ArrayList<>();
-            if (jobRequest.getApplications().isEmpty()) {
-                applications.addAll(this.commandService.getApplicationsForCommand(commandId));
-            } else {
-                for (final String applicationId : jobRequest.getApplications()) {
-                    applications.add(this.applicationService.getApplication(applicationId));
-                }
-            }
-            log.info(
-                "Selected applications {} for job {}",
-                applications
-                    .stream()
-                    .map(Application::getId)
-                    .filter(Optional::isPresent)
-                    .map(Optional::get)
-                    .reduce((one, two) -> one + "," + two)
-                    .orElse(NO_ID_FOUND),
-                jobRequest.getId().orElse(NO_ID_FOUND)
-            );
-            MetricsUtils.addSuccessTags(tags);
-            return applications;
-        } catch (final Throwable t) {
-            MetricsUtils.addFailureTagsWithException(tags, t);
-            throw t;
-        } finally {
-            this.registry
-                .timer(SELECT_APPLICATIONS_TIMER_NAME, tags)
-                .record(System.nanoTime() - start, TimeUnit.NANOSECONDS);
         }
     }
 }

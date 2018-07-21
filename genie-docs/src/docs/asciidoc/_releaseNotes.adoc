@@ -10,6 +10,8 @@ The following are the release notes for Genie {revnumber}.
 ** Standard for Boot 2.0
 * Switched to https://jcp.org/en/jsr/detail?id=310[JSR 310] classes for date and time manipulation
 * Upgrade to JPA 2.2
+* Integrate gRPC for Agent to server communication
+* Break 3.x security implementations into `genie-security` module
 
 === Library Upgrades
 
@@ -25,6 +27,54 @@ https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-2.0-Migration-Gu
 
 NOTE: Many Spring properties were changed as part of the Boot 2.0 release. Those are not documented here. Please
 refer to their documentation.
+
+==== Added
+
+|===
+|Property |Description| Default Value
+
+|cloud.aws.credentials.useDefaultAwsCredentialsChain
+|Whether to attempt creation of a standard AWS credentials chain.
+See https://cloud.spring.io/spring-cloud-aws/[Spring Cloud AWS] for more information.
+|true
+
+|cloud.aws.region.auto
+|Whether the AWS region will be attempted to be auto recognized via the AWS metadata services on EC2.
+See https://cloud.spring.io/spring-cloud-aws/[Spring Cloud AWS] for more information.
+|false
+
+|cloud.aws.region.static
+|The default AWS region. See https://cloud.spring.io/spring-cloud-aws/[Spring Cloud AWS] for more information.
+|us-east-1
+
+|cloud.aws.stack.auto
+|Whether auto stack detection is enabled.
+See https://cloud.spring.io/spring-cloud-aws/[Spring Cloud AWS] for more information.
+|false
+
+|management.endpoints.web.base-path
+|The default base path for the Spring Actuator[https://docs.spring.io/spring-boot/docs/current/actuator-api/html/]
+management endpoints. Switched from default `/actuator`
+|/admin
+
+|genie.grpc.server.enabled
+|Whether to start the gRPC server and services during server startup
+|true
+
+|genie.grpc.server.services.job-file-sync.ackIntervalMilliseconds
+|How many milliseconds to wait between checks whether some acknowledgement should be sent to the agent regardless of
+whether the `maxSyncMessages` threshold has been reached or not
+|30,000
+
+|genie.grpc.server.services.job-file-sync.maxSyncMessages
+|How many messages to receive from the agent before an acknowledgement message is sent back from the server
+|10
+
+|spring.data.redis.repositories.enabled
+|Whether Spring data repositories are enabled on top of redis as the backend store
+|false
+
+|===
 
 ==== Renamed
 
@@ -46,6 +96,24 @@ https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-2.0-Migration-Gu
 |Modifications to how Spring handled
 https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-2.0-Migration-Guide#relaxed-binding[property binding]
 
+|genie.jobs.clusters.loadBalancers.script.*
+|genie.jobs.clusters.load-balancers.script.*
+|Modifications to how Spring handled
+https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-2.0-Migration-Guide#relaxed-binding[property binding]
+
+|genie.jobs.users.activeLimit.*
+|genie.jobs.users.active-limit.*
+|Modifications to how Spring handled
+https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-2.0-Migration-Guide#relaxed-binding[property binding]
+
+|genie.zookeeper.enabled
+|spring.cloud.zookeeper.enabled
+|Leverage existing code rather than re-invent the wheel
+
+|genie.zookeeper.connectionString
+|spring.cloud.zookeeper.connectString
+|Leverage existing code rather than re-invent the wheel
+
 |===
 
 ==== Removed
@@ -53,9 +121,60 @@ https://github.com/spring-projects/spring-boot/wiki/Spring-Boot-2.0-Migration-Gu
 |===
 |Name |Reason
 
+|genie.aws.credentials.file
+|No longer necessary as `cloud.aws.credentials.useDefaultAwsCredentialsChain` is enabled by default an other Spring
+Cloud AWS properties can be used to configure more specifically other than to assume role which still uses
+`genie.aws.credentials.role`.
+
 |spring.jackson.date-format
 |Switched to `java.time.Instant` from `java.util.Date` for timestamps. Formatting in ISO8601 supported out of the box
 for `Instant` serialization/deserialization.
+
+|genie.jobs.clusters.load-balancers.script.order
+|This behavior was to control the order the script load balancer was evaluated relative to other cluster load
+balancer's. This logic is more a framework or execution configuration than anything specific to the class itself. It
+shouldn't know how it's used. The new mechanism is to provide an `@Order` annotation on beans that fit in the order
+the user wants at runtime via a Spring bean definition.
+
+|===
+
+=== Metric Changes
+
+Switched to http://micrometer.io/[Micrometer]
+
+==== Renamed
+
+|===
+|Old Name |New Name |Reason
+
+
+|genie.jobs.coordination.clusterCommandQuery.timer
+|genie.services.specification.clusterCommandQuery.timer
+|Functionality moved to new service
+
+|genie.jobs.submit.selectCluster.loadBalancer.counter
+|genie.services.specification.loadBalancer.counter
+|Functionality moved to new service
+
+|genie.jobs.submit.localRunner.selectApplications.timer
+|genie.services.specification.selectApplications.timer
+|Functionality moved to new service
+
+|genie.jobs.submit.localRunner.selectCluster.timer
+|genie.services.specification.selectCluster.timer
+|Functionality moved to new service
+
+|genie.jobs.submit.selectCluster.noneSelected.counter
+|genie.services.specification.selectCluster.noneSelected.counter
+|Functionality moved to new service
+
+|genie.jobs.submit.selectCluster.noneFound.counter
+|genie.services.specification.selectCluster.noneFound.counter
+|Functionality moved to new service
+
+|genie.jobs.submit.localRunner.selectCommand.timer
+|genie.services.specification.selectCommand.timer
+|Functionality moved to new service
 
 |===
 

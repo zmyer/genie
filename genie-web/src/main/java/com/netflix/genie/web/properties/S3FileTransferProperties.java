@@ -20,6 +20,7 @@ package com.netflix.genie.web.properties;
 
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 /**
@@ -28,9 +29,16 @@ import org.springframework.validation.annotation.Validated;
  * @author mprimi
  * @since 3.1.0
  */
+@ConfigurationProperties(prefix = S3FileTransferProperties.PROPERTY_PREFIX)
 @Getter
 @Setter
 @Validated
 public class S3FileTransferProperties {
+
+    /**
+     * The property prefix for this group.
+     */
+    public static final String PROPERTY_PREFIX = "genie.s3filetransfer";
+
     private boolean strictUrlCheckEnabled;
 }

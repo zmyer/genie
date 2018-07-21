@@ -27,12 +27,12 @@ import com.netflix.genie.common.dto.JobRequest;
 import com.netflix.genie.common.dto.JobStatus;
 import com.netflix.genie.common.dto.search.JobSearchResult;
 import com.netflix.genie.common.exceptions.GenieException;
-import org.hibernate.validator.constraints.NotBlank;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Nullable;
+import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 import java.time.Instant;
 import java.util.List;
@@ -91,18 +91,17 @@ public interface JobSearchService {
     /**
      * Given a hostname return a set of all the jobs currently active on that host.
      *
-     * @param hostName The host name to search for. Not null or empty.
+     * @param hostname The host name to search for. Not null or empty.
      * @return All the jobs active on the host as a set of Job objects
      */
-    Set<Job> getAllActiveJobsOnHost(@NotBlank final String hostName);
+    Set<Job> getAllActiveJobsOnHost(@NotBlank final String hostname);
 
     /**
      * Get a set of host names which are currently have active jobs in the Genie cluster.
      *
      * @return The set of hosts with jobs currently in an active state
      */
-    // TODO: Change to set
-    List<String> getAllHostsWithActiveJobs();
+    Set<String> getAllHostsWithActiveJobs();
 
     /**
      * Get job information for given job id.

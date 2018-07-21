@@ -19,11 +19,9 @@ package com.netflix.genie.web.jpa.entities;
 
 import com.netflix.genie.web.jpa.entities.projections.BaseProjection;
 import com.netflix.genie.web.jpa.entities.projections.SetupFileProjection;
-import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
-import org.hibernate.validator.constraints.NotBlank;
 
 import javax.annotation.Nullable;
 import javax.persistence.Basic;
@@ -33,9 +31,9 @@ import javax.persistence.JoinColumn;
 import javax.persistence.Lob;
 import javax.persistence.ManyToOne;
 import javax.persistence.MappedSuperclass;
+import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Size;
 import java.util.Optional;
-import java.util.UUID;
 
 /**
  * The base for all Genie top level entities. e.g. Applications, Jobs, etc.
@@ -46,18 +44,11 @@ import java.util.UUID;
  */
 @Getter
 @Setter
-@EqualsAndHashCode(of = "uniqueId", callSuper = false)
-@ToString(callSuper = true, exclude = {"description", "setupFile"})
+@ToString(callSuper = true, of = {"version", "user", "name"})
 @MappedSuperclass
-public class BaseEntity extends AuditEntity implements BaseProjection, SetupFileProjection {
+public class BaseEntity extends UniqueIdEntity implements BaseProjection, SetupFileProjection {
 
     private static final long serialVersionUID = -5040659007494311180L;
-
-    @Basic(optional = false)
-    @Column(name = "unique_id", nullable = false, unique = true, updatable = false)
-    @NotBlank(message = "A unique identifier is missing and is required.")
-    @Size(max = 255, message = "Max length in database is 255 characters")
-    private String uniqueId = UUID.randomUUID().toString();
 
     @Basic(optional = false)
     @Column(name = "version", nullable = false)
@@ -99,10 +90,9 @@ public class BaseEntity extends AuditEntity implements BaseProjection, SetupFile
     }
 
     /**
-     * Gets the description of this entity.
-     *
-     * @return description
+     * {@inheritDoc}
      */
+    @Override
     public Optional<String> getDescription() {
         return Optional.ofNullable(this.description);
     }
@@ -117,10 +107,9 @@ public class BaseEntity extends AuditEntity implements BaseProjection, SetupFile
     }
 
     /**
-     * Get the metadata of this entity which is unstructured JSON.
-     *
-     * @return Optional of the metadata json node represented as a string
+     * {@inheritDoc}
      */
+    @Override
     public Optional<String> getMetadata() {
         return Optional.ofNullable(this.metadata);
     }
@@ -135,10 +124,9 @@ public class BaseEntity extends AuditEntity implements BaseProjection, SetupFile
     }
 
     /**
-     * Get the setup file for this entity.
-     *
-     * @return The setup file as an Optional in case it's null
+     * {@inheritDoc}
      */
+    @Override
     public Optional<FileEntity> getSetupFile() {
         return Optional.ofNullable(this.setupFile);
     }
@@ -150,5 +138,21 @@ public class BaseEntity extends AuditEntity implements BaseProjection, SetupFile
      */
     public void setSetupFile(@Nullable final FileEntity setupFile) {
         this.setupFile = setupFile;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean equals(final Object o) {
+        return super.equals(o);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int hashCode() {
+        return super.hashCode();
     }
 }

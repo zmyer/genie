@@ -220,7 +220,7 @@ class JpaServiceUtilsSpec extends Specification {
         final FileEntity setupFileEntity = new FileEntity()
         setupFileEntity.setFile(setupFile)
         entity.setSetupFile(setupFileEntity)
-        def executable = UUID.randomUUID().toString()
+        def executable = Lists.newArrayList(UUID.randomUUID().toString())
         entity.setExecutable(executable)
         def checkDelay = 2180234L
         entity.setCheckDelay(checkDelay)
@@ -239,7 +239,7 @@ class JpaServiceUtilsSpec extends Specification {
         command.getDescription().orElseGet(RandomSuppliers.STRING) == description
         command.getCreated().orElseGet(RandomSuppliers.INSTANT) == created
         command.getUpdated().orElseGet(RandomSuppliers.INSTANT) == updated
-        command.getExecutable() == executable
+        command.getExecutable() == StringUtils.join(executable, ' ')
         command.getCheckDelay() == checkDelay
         command.getTags() == tags
         command.getSetupFile().orElseGet(RandomSuppliers.STRING) == setupFile
@@ -317,7 +317,7 @@ class JpaServiceUtilsSpec extends Specification {
         def id = UUID.randomUUID().toString()
         entity.setUniqueId(id)
         def hostName = UUID.randomUUID().toString()
-        entity.setHostName(hostName)
+        entity.setAgentHostname(hostName)
         def processId = 29038
         entity.setProcessId(processId)
         def checkDelay = 1890347L
@@ -349,9 +349,9 @@ class JpaServiceUtilsSpec extends Specification {
         def id = UUID.randomUUID().toString()
         entity.setUniqueId(id)
         def clientHost = UUID.randomUUID().toString()
-        entity.setClientHost(clientHost)
+        entity.setRequestApiClientHostname(clientHost)
         def userAgent = UUID.randomUUID().toString()
-        entity.setUserAgent(userAgent)
+        entity.setRequestApiClientUserAgent(userAgent)
         def numAttachments = 3
         entity.setNumAttachments(numAttachments)
         def totalSizeOfAttachments = 38023423L
@@ -417,7 +417,7 @@ class JpaServiceUtilsSpec extends Specification {
                                 new TagEntity(it)
                             }
                     )
-                    new CriterionEntity(clusterCriteriaTags)
+                    new CriterionEntity(null, null, null, null, clusterCriteriaTags)
                 }
         )
         entity.setClusterCriteria(clusterCriteriaEntities)
@@ -432,7 +432,7 @@ class JpaServiceUtilsSpec extends Specification {
                     new TagEntity(it)
                 }
         )
-        entity.setCommandCriterion(new CriterionEntity(commandCriterionTags))
+        entity.setCommandCriterion(new CriterionEntity(null, null, null, null, commandCriterionTags))
 
         def configs = Sets.newHashSet(
                 UUID.randomUUID().toString(),
@@ -462,7 +462,7 @@ class JpaServiceUtilsSpec extends Specification {
         )
         entity.setDependencies(dependencies)
 
-        entity.setDisableLogArchival(true)
+        entity.setArchivingDisabled(true)
 
         def email = UUID.randomUUID().toString()
         entity.setEmail(email)
@@ -476,10 +476,10 @@ class JpaServiceUtilsSpec extends Specification {
         entity.setSetupFile(setupFileEntity)
 
         final int cpu = 38
-        entity.setCpuRequested(cpu)
+        entity.setRequestedCpu(cpu)
 
         final int memory = 3060
-        entity.setMemoryRequested(memory)
+        entity.setRequestedMemory(memory)
 
         final List<String> applications = Lists.newArrayList(
                 UUID.randomUUID().toString(),
@@ -487,10 +487,10 @@ class JpaServiceUtilsSpec extends Specification {
                 UUID.randomUUID().toString(),
                 UUID.randomUUID().toString()
         )
-        entity.setApplicationsRequested(applications)
+        entity.setRequestedApplications(applications)
 
         final int timeout = 824197
-        entity.setTimeoutRequested(timeout)
+        entity.setRequestedTimeout(timeout)
 
         when:
         def request = JpaServiceUtils.toJobRequestDto(entity)

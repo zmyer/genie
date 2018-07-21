@@ -18,11 +18,13 @@
 
 package com.netflix.genie.agent.execution.statemachine.actions;
 
+import com.netflix.genie.agent.execution.ExecutionContext;
+import com.netflix.genie.agent.execution.exceptions.ChangeJobStatusException;
+import com.netflix.genie.agent.execution.services.AgentJobService;
 import com.netflix.genie.agent.execution.statemachine.Events;
-import com.netflix.genie.agent.execution.statemachine.States;
+import com.netflix.genie.common.dto.JobStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.statemachine.StateContext;
 import org.springframework.stereotype.Component;
 
 /**
@@ -35,13 +37,49 @@ import org.springframework.stereotype.Component;
 @Lazy
 class MonitorJobAction extends BaseStateAction implements StateAction.MonitorJob {
 
+    private final AgentJobService agentJobService;
+
+    MonitorJobAction(
+        final ExecutionContext executionContext,
+        final AgentJobService agentJobService
+    ) {
+        super(executionContext);
+        this.agentJobService = agentJobService;
+    }
+
     /**
      * {@inheritDoc}
      */
     @Override
-    protected Events executeStateAction(final StateContext<States, Events> context) {
+    protected Events executeStateAction(final ExecutionContext executionContext) {
         log.info("Monitoring job...");
-        //TODO implement this action
+
+        final int exitCode;
+        try {
+             exitCode = executionContext.getJobProcess().waitFor();
+        } catch (final InterruptedException e) {
+            throw new RuntimeException("Interrupted while waiting for job completion", e);
+        }
+
+        log.info("Job process completed with exit code: {}", exitCode);
+
+        // TODO: handle KILLED case
+        final JobStatus finalJobStatus = exitCode == 0 ? JobStatus.SUCCEEDED : JobStatus.FAILED;
+
+        executionContext.setFinalJobStatus(finalJobStatus);
+
+        try {
+            this.agentJobService.changeJobStatus(
+                executionContext.getClaimedJobId(),
+                executionContext.getCurrentJobStatus(),
+                finalJobStatus,
+                "Job process exited with status " + exitCode
+            );
+            executionContext.setCurrentJobStatus(finalJobStatus);
+        } catch (ChangeJobStatusException e) {
+            throw new RuntimeException("Failed to update job status", e);
+        }
+
         return Events.MONITOR_JOB_COMPLETE;
     }
 }

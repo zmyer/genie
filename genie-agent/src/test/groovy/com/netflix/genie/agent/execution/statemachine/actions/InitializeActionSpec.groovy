@@ -19,65 +19,31 @@
 package com.netflix.genie.agent.execution.statemachine.actions
 
 import com.netflix.genie.agent.execution.ExecutionContext
-import com.netflix.genie.agent.execution.exceptions.AgentRegistrationException
-import com.netflix.genie.agent.execution.services.AgentRegistrationService
+
 import com.netflix.genie.agent.execution.statemachine.Events
-import com.netflix.genie.agent.execution.statemachine.States
 import com.netflix.genie.test.categories.UnitTest
 import org.junit.experimental.categories.Category
-import org.springframework.statemachine.StateContext
 import spock.lang.Specification
 
 @Category(UnitTest.class)
 class InitializeActionSpec extends Specification {
-    AgentRegistrationService agentRegistrationService
     ExecutionContext executionContext
     String agentId
-    StateContext<States, Events> stateContext
 
     void setup() {
-        this.agentRegistrationService = Mock(AgentRegistrationService)
         this.executionContext = Mock(ExecutionContext)
-        this.stateContext = Mock(StateContext)
         this.agentId = UUID.randomUUID().toString()
     }
 
     void cleanup() {
     }
 
-    def "Register"() {
+    def "Initialize"() {
         setup:
-        InitializeAction action = new InitializeAction(agentRegistrationService, executionContext)
+        InitializeAction action = new InitializeAction(executionContext)
         when:
-        def event = action.executeStateAction(stateContext)
+        def event = action.executeStateAction(executionContext)
         then:
-        1 * agentRegistrationService.registerAgent() >> agentId
-        1 * executionContext.setAgentId(agentId)
         event == Events.INITIALIZE_COMPLETE
     }
-
-    def "RegistrationException"() {
-        setup:
-        def e = new AgentRegistrationException("test")
-        InitializeAction action = new InitializeAction(agentRegistrationService, executionContext)
-        when:
-        action.executeStateAction(stateContext)
-        then:
-        1 * agentRegistrationService.registerAgent() >> { throw e }
-        0 * executionContext.setAgentId(agentId)
-        thrown(RuntimeException.class)
-    }
-
-    def "RegistrationRuntimeException"() {
-        setup:
-        def e = new RuntimeException("test")
-        InitializeAction action = new InitializeAction(agentRegistrationService, executionContext)
-        when:
-        action.executeStateAction(stateContext)
-        then:
-        1 * agentRegistrationService.registerAgent() >> { throw e }
-        0 * executionContext.setAgentId(agentId)
-        thrown(RuntimeException.class)
-    }
-
 }

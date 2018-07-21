@@ -18,27 +18,69 @@
 
 package com.netflix.genie.agent.execution.statemachine.actions
 
+import com.netflix.genie.agent.execution.ExecutionContext
 import com.netflix.genie.agent.execution.statemachine.Events
-import com.netflix.genie.agent.execution.statemachine.States
-import org.springframework.statemachine.StateContext
+import org.assertj.core.util.Lists
 import spock.lang.Specification
 
 class CleanupJobActionSpec extends Specification {
-    StateContext<States, Events> stateContext
+    ExecutionContext executionContext
     CleanupJobAction action
+    List<StateAction> cleanupQueue
+
 
     void setup() {
-        this.stateContext = Mock(StateContext)
-        this.action = new CleanupJobAction()
+        this.executionContext = Mock(ExecutionContext)
+        this.action = new CleanupJobAction(executionContext)
+        this.cleanupQueue = Lists.newArrayList()
+
+        executionContext.getCleanupActions() >> cleanupQueue
     }
 
     void cleanup() {
     }
 
-    def "ExecuteStateAction"() {
+    def "Execute with empty queue"() {
         when:
-        def event = action.executeStateAction(stateContext)
+        def event = action.executeStateAction(executionContext)
         then:
         event == Events.CLEANUP_JOB_COMPLETE
+    }
+
+
+    def "Execute with actions and self"() {
+        setup:
+        def action1 = Mock(StateAction)
+        def action2 = Mock(StateAction)
+        cleanupQueue.add(action1)
+        cleanupQueue.add(action2)
+        cleanupQueue.add(action)
+
+        when:
+        def event = action.executeStateAction(executionContext)
+
+        then:
+        event == Events.CLEANUP_JOB_COMPLETE
+        1 * action1.cleanup()
+        1 * action2.cleanup()
+        0 * action.cleanup()
+    }
+
+    def "Execute with throwing action"() {
+        setup:
+        def action1 = Mock(StateAction)
+        def action2 = Mock(StateAction)
+        cleanupQueue.add(action1)
+        cleanupQueue.add(action2)
+        cleanupQueue.add(action)
+
+        when:
+        def event = action.executeStateAction(executionContext)
+
+        then:
+        event == Events.CLEANUP_JOB_COMPLETE
+        1 * action1.cleanup()
+        1 * action2.cleanup() >> {throw new RuntimeException()}
+        0 * action.cleanup()
     }
 }

@@ -17,27 +17,27 @@
  */
 package com.netflix.genie.web.services.loadbalancers.script
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.common.collect.ImmutableSet
 import com.google.common.collect.Lists
 import com.google.common.collect.Sets
-import com.netflix.genie.common.dto.Cluster
 import com.netflix.genie.common.dto.ClusterCriteria
 import com.netflix.genie.common.dto.ClusterStatus
 import com.netflix.genie.common.dto.JobRequest
+import com.netflix.genie.common.internal.dto.v4.Cluster
+import com.netflix.genie.common.internal.dto.v4.ClusterMetadata
+import com.netflix.genie.common.internal.dto.v4.ExecutionEnvironment
 import com.netflix.genie.common.util.GenieObjectMapper
 import com.netflix.genie.test.categories.UnitTest
-import com.netflix.genie.web.services.ClusterLoadBalancer
+import com.netflix.genie.web.properties.ScriptLoadBalancerProperties
 import com.netflix.genie.web.services.impl.GenieFileTransferService
 import com.netflix.genie.web.util.MetricsConstants
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Tag
-import org.apache.commons.lang.StringUtils
+import org.apache.commons.lang3.StringUtils
 import org.junit.Rule
 import org.junit.experimental.categories.Category
 import org.junit.rules.TemporaryFolder
 import org.springframework.core.env.Environment
-import org.springframework.core.task.AsyncTaskExecutor
 import org.springframework.scheduling.TaskScheduler
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor
 import spock.lang.Shared
@@ -45,6 +45,7 @@ import spock.lang.Specification
 import spock.lang.Unroll
 
 import java.nio.file.Paths
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 /**
@@ -61,26 +62,81 @@ class ScriptLoadBalancerSpec extends Specification {
 
     @Shared
     def clustersGood = Sets.newHashSet(
-            new Cluster.Builder("a", "b", "c", ClusterStatus.UP).withId("2").build(),
-            new Cluster.Builder("d", "e", "f", ClusterStatus.UP).withId("0").build(),
-            new Cluster.Builder("g", "h", "i", ClusterStatus.UP).withId("1").build()
+        new Cluster(
+            "2",
+            Instant.now(),
+            Instant.now(),
+            new ExecutionEnvironment(null, null, null),
+            new ClusterMetadata.Builder(
+                "a",
+                "b",
+                "c",
+                ClusterStatus.UP
+            ).build()
+        ),
+        new Cluster(
+            "0",
+            Instant.now(),
+            Instant.now(),
+            new ExecutionEnvironment(null, null, null),
+            new ClusterMetadata.Builder(
+                "d",
+                "e",
+                "f",
+                ClusterStatus.UP
+            ).build()
+        ),
+        new Cluster(
+            "1",
+            Instant.now(),
+            Instant.now(),
+            new ExecutionEnvironment(null, null, null),
+            new ClusterMetadata.Builder(
+                "g",
+                "h",
+                "i",
+                ClusterStatus.UP
+            ).build()
+        )
     )
 
     @Shared
     def clustersBad = Sets.newHashSet(
-            new Cluster.Builder("j", "k", "l", ClusterStatus.UP).withId("3").build(),
-            new Cluster.Builder("m", "n", "o", ClusterStatus.UP).withId("4").build()
+        new Cluster(
+            "3",
+            Instant.now(),
+            Instant.now(),
+            new ExecutionEnvironment(null, null, null),
+            new ClusterMetadata.Builder(
+                "j",
+                "k",
+                "l",
+                ClusterStatus.UP
+            ).build()
+        ),
+        new Cluster(
+            "4",
+            Instant.now(),
+            Instant.now(),
+            new ExecutionEnvironment(null, null, null),
+            new ClusterMetadata.Builder(
+                "m",
+                "n",
+                "o",
+                ClusterStatus.UP
+            ).build()
+        )
     )
 
     @Shared
     def jobRequest = new JobRequest.Builder(
-            "jobName",
-            "jobUser",
-            "jobVersion",
-            Lists.newArrayList(
-                    new ClusterCriteria(Sets.newHashSet(UUID.randomUUID().toString(), UUID.randomUUID().toString()))
-            ),
-            Sets.newHashSet(UUID.randomUUID().toString())
+        "jobName",
+        "jobUser",
+        "jobVersion",
+        Lists.newArrayList(
+            new ClusterCriteria(Sets.newHashSet(UUID.randomUUID().toString(), UUID.randomUUID().toString()))
+        ),
+        Sets.newHashSet(UUID.randomUUID().toString())
     ).build()
 
     @Shared
@@ -96,50 +152,6 @@ class ScriptLoadBalancerSpec extends Specification {
     }
 
     @Unroll
-    def "Order should be #order"() {
-        def loadBalancer = new ScriptLoadBalancer(
-                Mock(AsyncTaskExecutor),
-                Mock(TaskScheduler) {
-                    1 * scheduleWithFixedDelay(_ as Runnable, 300_000L)
-                },
-                Mock(GenieFileTransferService),
-                environment,
-                Mock(ObjectMapper),
-                Mock(MeterRegistry)
-        )
-
-        expect:
-        loadBalancer.getOrder() == order
-
-        where:
-        environment | order
-        Mock(Environment) {
-            1 * getProperty(
-                    ScriptLoadBalancer.SCRIPT_REFRESH_RATE_PROPERTY_KEY,
-                    Long.class,
-                    300_000L
-            ) >> 300_000L
-            1 * getProperty(
-                    ScriptLoadBalancer.SCRIPT_LOAD_BALANCER_ORDER_PROPERTY_KEY,
-                    Integer.class,
-                    ClusterLoadBalancer.DEFAULT_ORDER
-            ) >> ClusterLoadBalancer.DEFAULT_ORDER
-        }           | ClusterLoadBalancer.DEFAULT_ORDER
-        Mock(Environment) {
-            1 * getProperty(
-                    ScriptLoadBalancer.SCRIPT_REFRESH_RATE_PROPERTY_KEY,
-                    Long.class,
-                    300_000L
-            ) >> 300_000L
-            1 * getProperty(
-                    ScriptLoadBalancer.SCRIPT_LOAD_BALANCER_ORDER_PROPERTY_KEY,
-                    Integer.class,
-                    _ as Integer
-            ) >> 3
-        }           | 3
-    }
-
-    @Unroll
     def "Can select cluster using #type for script #file"() {
         def scheduler = Mock(TaskScheduler)
         def environment = Mock(Environment)
@@ -151,25 +163,20 @@ class ScriptLoadBalancerSpec extends Specification {
 
         when: "Constructed"
         def loadBalancer = new ScriptLoadBalancer(
-                this.executor,
-                scheduler,
-                fileTransferService,
-                environment,
-                GenieObjectMapper.getMapper(),
-                registry
+            this.executor,
+            scheduler,
+            fileTransferService,
+            environment,
+            GenieObjectMapper.getMapper(),
+            registry
         )
 
         then:
         1 * environment.getProperty(
-                ScriptLoadBalancer.SCRIPT_REFRESH_RATE_PROPERTY_KEY,
-                Long.class,
-                300_000L
+            ScriptLoadBalancerProperties.REFRESH_RATE_PROPERTY,
+            Long.class,
+            300_000L
         ) >> 300_000L
-        1 * environment.getProperty(
-                ScriptLoadBalancer.SCRIPT_LOAD_BALANCER_ORDER_PROPERTY_KEY,
-                Integer.class,
-                _ as Integer
-        ) >> 3
         1 * scheduler.scheduleWithFixedDelay(_ as Runnable, 300_000L)
 
         when: "Try to select after before update"
@@ -178,8 +185,8 @@ class ScriptLoadBalancerSpec extends Specification {
         then: "Should skip running script and do nothing"
         cluster == null
         1 * registry.timer(
-                ScriptLoadBalancer.SELECT_TIMER_NAME,
-                ImmutableSet.of(Tag.of(MetricsConstants.TagKeys.STATUS, ScriptLoadBalancer.STATUS_TAG_NOT_CONFIGURED))
+            ScriptLoadBalancer.SELECT_TIMER_NAME,
+            ImmutableSet.of(Tag.of(MetricsConstants.TagKeys.STATUS, ScriptLoadBalancer.STATUS_TAG_NOT_CONFIGURED))
         ) >> selectTimer
         1 * selectTimer.record(_ as Long, TimeUnit.NANOSECONDS)
 
@@ -187,14 +194,14 @@ class ScriptLoadBalancerSpec extends Specification {
         loadBalancer.refresh()
 
         then: "Metrics are recorded"
-        1 * environment.getProperty(ScriptLoadBalancer.SCRIPT_TIMEOUT_PROPERTY_KEY, Long.class, _ as Long) >> 5_000L
-        1 * environment.getProperty(ScriptLoadBalancer.SCRIPT_FILE_SOURCE_PROPERTY_KEY) >> null
+        1 * environment.getProperty(ScriptLoadBalancerProperties.TIMEOUT_PROPERTY, Long.class, _ as Long) >> 5_000L
+        1 * environment.getProperty(ScriptLoadBalancerProperties.SCRIPT_FILE_SOURCE_PROPERTY) >> null
         1 * registry.timer(
-                ScriptLoadBalancer.UPDATE_TIMER_NAME,
-                ImmutableSet.of(
-                        Tag.of(MetricsConstants.TagKeys.STATUS, ScriptLoadBalancer.STATUS_TAG_FAILED),
-                        Tag.of(MetricsConstants.TagKeys.EXCEPTION_CLASS, IllegalStateException.class.getName())
-                )
+            ScriptLoadBalancer.UPDATE_TIMER_NAME,
+            ImmutableSet.of(
+                Tag.of(MetricsConstants.TagKeys.STATUS, ScriptLoadBalancer.STATUS_TAG_FAILED),
+                Tag.of(MetricsConstants.TagKeys.EXCEPTION_CLASS, IllegalStateException.class.getName())
+            )
         ) >> updateTimer
         1 * updateTimer.record(_ as Long, TimeUnit.NANOSECONDS)
 
@@ -204,10 +211,10 @@ class ScriptLoadBalancerSpec extends Specification {
         then: "Should skip running script and do nothing"
         cluster == null
         1 * registry.timer(
-                ScriptLoadBalancer.SELECT_TIMER_NAME,
-                ImmutableSet.of(
-                        Tag.of(MetricsConstants.TagKeys.STATUS, ScriptLoadBalancer.STATUS_TAG_NOT_CONFIGURED)
-                )
+            ScriptLoadBalancer.SELECT_TIMER_NAME,
+            ImmutableSet.of(
+                Tag.of(MetricsConstants.TagKeys.STATUS, ScriptLoadBalancer.STATUS_TAG_NOT_CONFIGURED)
+            )
         ) >> selectTimer
         1 * selectTimer.record(_ as Long, TimeUnit.NANOSECONDS)
 
@@ -215,13 +222,13 @@ class ScriptLoadBalancerSpec extends Specification {
         loadBalancer.refresh()
 
         then: "Refresh successfully configures the script"
-        1 * environment.getProperty(ScriptLoadBalancer.SCRIPT_TIMEOUT_PROPERTY_KEY, Long.class, _ as Long) >> 5_000L
-        1 * environment.getProperty(ScriptLoadBalancer.SCRIPT_FILE_SOURCE_PROPERTY_KEY) >> file
-        1 * environment.getProperty(ScriptLoadBalancer.SCRIPT_FILE_DESTINATION_PROPERTY_KEY) >> destDir
+        1 * environment.getProperty(ScriptLoadBalancerProperties.TIMEOUT_PROPERTY, Long.class, _ as Long) >> 5_000L
+        1 * environment.getProperty(ScriptLoadBalancerProperties.SCRIPT_FILE_SOURCE_PROPERTY) >> file
+        1 * environment.getProperty(ScriptLoadBalancerProperties.SCRIPT_FILE_DESTINATION_PROPERTY) >> destDir
         1 * fileTransferService.getFile(file, file)
         1 * registry.timer(
-                ScriptLoadBalancer.UPDATE_TIMER_NAME,
-                ImmutableSet.of(Tag.of(MetricsConstants.TagKeys.STATUS, ScriptLoadBalancer.STATUS_TAG_OK))
+            ScriptLoadBalancer.UPDATE_TIMER_NAME,
+            ImmutableSet.of(Tag.of(MetricsConstants.TagKeys.STATUS, ScriptLoadBalancer.STATUS_TAG_OK))
         ) >> updateTimer
         1 * updateTimer.record(_ as Long, TimeUnit.NANOSECONDS)
 
@@ -230,10 +237,10 @@ class ScriptLoadBalancerSpec extends Specification {
 
         then: "Can successfully find a cluster"
         cluster != null
-        cluster.getId().get() == "1"
+        cluster.getId() == "1"
         1 * registry.timer(
-                ScriptLoadBalancer.SELECT_TIMER_NAME,
-                ImmutableSet.of(Tag.of(MetricsConstants.TagKeys.STATUS, ScriptLoadBalancer.STATUS_TAG_FOUND))
+            ScriptLoadBalancer.SELECT_TIMER_NAME,
+            ImmutableSet.of(Tag.of(MetricsConstants.TagKeys.STATUS, ScriptLoadBalancer.STATUS_TAG_FOUND))
         ) >> selectTimer
         1 * selectTimer.record(_ as Long, TimeUnit.NANOSECONDS)
 
@@ -243,8 +250,8 @@ class ScriptLoadBalancerSpec extends Specification {
         then: "Can't find a cluster"
         cluster == null
         1 * registry.timer(
-                ScriptLoadBalancer.SELECT_TIMER_NAME,
-                ImmutableSet.of(Tag.of(MetricsConstants.TagKeys.STATUS, ScriptLoadBalancer.STATUS_TAG_NOT_FOUND))
+            ScriptLoadBalancer.SELECT_TIMER_NAME,
+            ImmutableSet.of(Tag.of(MetricsConstants.TagKeys.STATUS, ScriptLoadBalancer.STATUS_TAG_NOT_FOUND))
         ) >> selectTimer
         1 * selectTimer.record(_ as Long, TimeUnit.NANOSECONDS)
 

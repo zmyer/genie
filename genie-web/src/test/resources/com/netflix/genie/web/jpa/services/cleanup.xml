@@ -24,6 +24,7 @@
     <commands_configs/>
     <commands_dependencies/>
     <commands_tags/>
+    <command_executable_arguments/>
     <jobs_configs/>
     <jobs_dependencies/>
     <jobs_tags/>
@@ -31,7 +32,9 @@
     <commands_applications/>
     <jobs_applications/>
     <job_command_arguments/>
-    <job_applications_requested/>
+    <job_requested_environment_variables/>
+    <job_environment_variables/>
+    <job_requested_applications/>
     <criteria_tags/>
     <jobs_cluster_criteria/>
     <jobs/>

@@ -17,15 +17,11 @@
  */
 package com.netflix.genie.web.jpa.services
 
-import com.google.common.collect.Sets
-import com.netflix.genie.common.exceptions.GenieNotFoundException
-import com.netflix.genie.common.exceptions.GenieServerException
+import com.netflix.genie.common.internal.exceptions.unchecked.GenieRuntimeException
 import com.netflix.genie.test.categories.UnitTest
-import com.netflix.genie.web.jpa.entities.TagEntity
-import com.netflix.genie.web.jpa.repositories.JpaFileRepository
-import com.netflix.genie.web.jpa.repositories.JpaTagRepository
-import com.netflix.genie.web.services.FileService
-import com.netflix.genie.web.services.TagService
+import com.netflix.genie.web.jpa.repositories.JpaApplicationRepository
+import com.netflix.genie.web.jpa.repositories.JpaClusterRepository
+import com.netflix.genie.web.jpa.repositories.JpaCommandRepository
 import org.junit.experimental.categories.Category
 import spock.lang.Specification
 
@@ -39,140 +35,42 @@ import spock.lang.Specification
 class JpaBaseServiceSpec extends Specification {
 
     def "Can't get file entity if doesn't exist"() {
-        def jpaFileRepository = Mock(JpaFileRepository) {
-            1 * findByFile(_ as String) >> Optional.empty()
-        }
-        def fileService = Mock(FileService) {
+        def fileService = Mock(JpaFilePersistenceService) {
             1 * createFileIfNotExists(_ as String)
+            1 * getFile(_ as String) >> Optional.empty()
         }
         def service = new JpaBaseService(
-                Mock(TagService),
-                Mock(JpaTagRepository),
+                Mock(JpaTagPersistenceService),
                 fileService,
-                jpaFileRepository
+                Mock(JpaApplicationRepository),
+                Mock(JpaClusterRepository),
+                Mock(JpaCommandRepository)
         )
 
         when:
         service.createAndGetFileEntity(UUID.randomUUID().toString())
 
         then:
-        thrown(GenieNotFoundException)
+        thrown(GenieRuntimeException)
     }
 
     def "Can't get tag entity if doesn't exist"() {
-        def jpaTagRepository = Mock(JpaTagRepository) {
-            1 * findByTag(_ as String) >> Optional.empty()
-        }
-        def tagService = Mock(TagService) {
+        def tagService = Mock(JpaTagPersistenceService) {
             1 * createTagIfNotExists(_ as String)
+            1 * getTag(_ as String) >> Optional.empty()
         }
         def service = new JpaBaseService(
                 tagService,
-                jpaTagRepository,
-                Mock(FileService),
-                Mock(JpaFileRepository)
+                Mock(JpaFilePersistenceService),
+                Mock(JpaApplicationRepository),
+                Mock(JpaClusterRepository),
+                Mock(JpaCommandRepository)
         )
 
         when:
         service.createAndGetTagEntity(UUID.randomUUID().toString())
 
         then:
-        thrown(GenieNotFoundException)
-    }
-
-    def "Can set the final tags for an entity"() {
-        def id = UUID.randomUUID().toString()
-        def name = UUID.randomUUID().toString()
-
-        def genieIdTag = JpaBaseService.GENIE_ID_TAG_NAMESPACE + id
-        def genieNameTag = JpaBaseService.GENIE_NAME_TAG_NAMESPACE + name
-
-        def idTagEntity = new TagEntity()
-        idTagEntity.setTag(genieIdTag)
-
-        def nameTagEntity = new TagEntity()
-        nameTagEntity.setTag(genieNameTag)
-
-        def tagEntity1 = new TagEntity()
-        tagEntity1.setTag(UUID.randomUUID().toString())
-
-        def tagEntity2 = new TagEntity()
-        tagEntity2.setTag(UUID.randomUUID().toString())
-
-        def nameTagEntity2 = new TagEntity()
-        nameTagEntity2.setTag(JpaBaseService.GENIE_NAME_TAG_NAMESPACE + UUID.randomUUID().toString())
-
-        def tagService = Mock(TagService.class) {
-            3 * createTagIfNotExists(genieIdTag)
-            2 * createTagIfNotExists(genieNameTag)
-        }
-        def jpaTagRepository = Mock(JpaTagRepository.class) {
-            3 * findByTag(genieIdTag) >> Optional.of(idTagEntity)
-            2 * findByTag(genieNameTag) >> Optional.of(nameTagEntity)
-        }
-        def service = new JpaBaseService(
-                tagService,
-                jpaTagRepository,
-                Mock(FileService),
-                Mock(JpaFileRepository)
-        )
-
-        def expectedTags = Sets.newHashSet(idTagEntity, nameTagEntity, tagEntity1, tagEntity2)
-        def noGenieTags = Sets.newHashSet(tagEntity1, tagEntity2)
-        def nameTags = Sets.newHashSet(nameTagEntity, tagEntity1, tagEntity2)
-        def twoNameTags = Sets.newHashSet(nameTagEntity, nameTagEntity2, tagEntity1, tagEntity2)
-        def idTags = Sets.newHashSet(idTagEntity, tagEntity1, tagEntity2)
-
-        when:
-        service.setFinalTags(noGenieTags, id, name)
-
-        then:
-        noGenieTags == expectedTags
-
-        when:
-        service.setFinalTags(nameTags, id, name)
-
-        then:
-        nameTags == expectedTags
-
-        when:
-        service.setFinalTags(twoNameTags, id, name)
-
-        then:
-        twoNameTags == expectedTags
-
-        when:
-        service.setFinalTags(idTags, id, name)
-
-        then:
-        idTags == expectedTags
-    }
-
-    def "When there are two id tags trying to set final tags throws an exception"() {
-        def service = new JpaBaseService(
-                Mock(TagService),
-                Mock(JpaTagRepository),
-                Mock(FileService),
-                Mock(JpaFileRepository)
-        )
-
-        def idTag1 = JpaBaseService.GENIE_ID_TAG_NAMESPACE + UUID.randomUUID().toString()
-        def idTag2 = JpaBaseService.GENIE_ID_TAG_NAMESPACE + UUID.randomUUID().toString()
-
-        def idEntity1 = new TagEntity()
-        idEntity1.setTag(idTag1)
-
-        def idEntity2 = new TagEntity()
-        idEntity2.setTag(idTag2)
-
-        when:
-        service.setFinalTags(
-                Sets.newHashSet(idEntity1, idEntity2),
-                UUID.randomUUID().toString(),
-                UUID.randomUUID().toString()
-        )
-
-        then:
-        thrown(GenieServerException)
+        thrown(GenieRuntimeException)
     }
 }

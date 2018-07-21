@@ -19,7 +19,10 @@ package com.netflix.genie.web.properties;
 
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
+
+import javax.validation.Valid;
 
 /**
  * Properties related to users running jobs.
@@ -27,11 +30,19 @@ import org.springframework.validation.annotation.Validated;
  * @author tgianos
  * @since 3.0.0
  */
+@ConfigurationProperties(prefix = JobsUsersProperties.PROPERTY_PREFIX)
 @Getter
 @Setter
 @Validated
 public class JobsUsersProperties {
+
+    /**
+     * The property prefix for all properties in this group.
+     */
+    public static final String PROPERTY_PREFIX = "genie.jobs.users";
+
     private boolean creationEnabled;
     private boolean runAsUserEnabled;
+    @Valid
     private JobsUsersActiveLimitProperties activeLimit = new JobsUsersActiveLimitProperties();
 }

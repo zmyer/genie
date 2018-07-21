@@ -19,6 +19,7 @@ package com.netflix.genie.web.properties;
 
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 /**
@@ -27,10 +28,17 @@ import org.springframework.validation.annotation.Validated;
  * @author amajumdar
  * @since 3.0.0
  */
+@ConfigurationProperties(prefix = HealthProperties.PROPERTY_PREFIX)
 @Getter
 @Setter
 @Validated
 public class HealthProperties {
+
+    /**
+     * The property prefix for all properties in this group.
+     */
+    public static final String PROPERTY_PREFIX = "genie.health";
+
     /**
      * Defines the threshold for the maximum CPU load percentage. Health of the system is marked OUT_OF_SERVICE if
      * the CPU load of a system goes beyond this threshold for <code>maxCpuLoadConsecutiveOccurrences</code>
@@ -38,6 +46,7 @@ public class HealthProperties {
      * Default to 80 percentage.
      */
     private double maxCpuLoadPercent = 80;
+
     /**
      * Defines the threshold of consecutive occurrences of CPU load crossing the <code>maxCpuLoadPercent</code>.
      * Health of the system is marked OUT_OF_SERVICE if the CPU load of a system goes beyond the threshold

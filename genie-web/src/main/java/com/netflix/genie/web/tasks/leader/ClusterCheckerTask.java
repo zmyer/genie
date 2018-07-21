@@ -23,6 +23,7 @@ import com.netflix.genie.common.dto.Job;
 import com.netflix.genie.common.dto.JobExecution;
 import com.netflix.genie.common.dto.JobStatus;
 import com.netflix.genie.common.exceptions.GenieException;
+import com.netflix.genie.common.internal.util.GenieHostInfo;
 import com.netflix.genie.common.util.GenieObjectMapper;
 import com.netflix.genie.web.properties.ClusterCheckerProperties;
 import com.netflix.genie.web.services.JobPersistenceService;
@@ -31,11 +32,8 @@ import com.netflix.genie.web.tasks.GenieTaskScheduleType;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.actuate.autoconfigure.endpoint.web.WebEndpointProperties;
 import org.springframework.boot.actuate.health.Status;
-import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
@@ -54,12 +52,11 @@ import java.util.Set;
  * @author tgianos
  * @since 3.0.0
  */
-@Component
 @Slf4j
 public class ClusterCheckerTask extends LeadershipTask {
     private static final String PROPERTY_STATUS = "status";
 
-    private final String hostName;
+    private final String hostname;
     private final ClusterCheckerProperties properties;
     private final JobSearchService jobSearchService;
     private final JobPersistenceService jobPersistenceService;
@@ -77,7 +74,7 @@ public class ClusterCheckerTask extends LeadershipTask {
     /**
      * Constructor.
      *
-     * @param hostName              The host name of this node
+     * @param genieHostInfo         Information about the host this Genie process is running on
      * @param properties            The properties to use to configure the task
      * @param jobSearchService      The job search service to use
      * @param jobPersistenceService The job persistence service to use
@@ -85,17 +82,16 @@ public class ClusterCheckerTask extends LeadershipTask {
      * @param webEndpointProperties The properties where Spring actuator is running
      * @param registry              The spectator registry for getting metrics
      */
-    @Autowired
     public ClusterCheckerTask(
-        @NotNull final String hostName,
+        @NotNull final GenieHostInfo genieHostInfo,
         @NotNull final ClusterCheckerProperties properties,
         @NotNull final JobSearchService jobSearchService,
         @NotNull final JobPersistenceService jobPersistenceService,
-        @Qualifier("genieRestTemplate") @NotNull final RestTemplate restTemplate,
+        @NotNull final RestTemplate restTemplate,
         @NotNull final WebEndpointProperties webEndpointProperties,
         @NotNull final MeterRegistry registry
     ) {
-        this.hostName = hostName;
+        this.hostname = genieHostInfo.getHostname();
         this.properties = properties;
         this.jobSearchService = jobSearchService;
         this.jobPersistenceService = jobPersistenceService;
@@ -118,34 +114,36 @@ public class ClusterCheckerTask extends LeadershipTask {
         log.info("Checking for cluster node health...");
         this.jobSearchService.getAllHostsWithActiveJobs()
             .stream()
-            .filter(host -> !this.hostName.equals(host))
+            .filter(host -> !this.hostname.equals(host))
             .forEach(this::validateHostAndUpdateErrorCount);
 
-        this.errorCounts.entrySet().removeIf(entry -> {
-            final String host = entry.getKey();
-            boolean result = true;
-            if (entry.getValue() >= properties.getLostThreshold()) {
-                try {
-                    updateJobsToFailedOnHost(host);
-                } catch (Exception e) {
-                    log.error("Unable to update jobs on host {} due to exception", host, e);
-                    unableToUpdateJobCounter.increment();
+        this.errorCounts.entrySet().removeIf(
+            entry -> {
+                final String host = entry.getKey();
+                boolean result = true;
+                if (entry.getValue() >= this.properties.getLostThreshold()) {
+                    try {
+                        this.updateJobsToFailedOnHost(host);
+                    } catch (Exception e) {
+                        log.error("Unable to update jobs on host {} due to exception", host, e);
+                        this.unableToUpdateJobCounter.increment();
+                        result = false;
+                    }
+                } else {
                     result = false;
                 }
-            } else {
-                result = false;
+                return result;
             }
-            return result;
-        });
+        );
         log.info("Finished checking for cluster node health.");
     }
 
     private void updateJobsToFailedOnHost(final String host) {
-        final Set<Job> jobs = jobSearchService.getAllActiveJobsOnHost(host);
+        final Set<Job> jobs = this.jobSearchService.getAllActiveJobsOnHost(host);
         jobs.forEach(
             job -> {
                 try {
-                    jobPersistenceService.setJobCompletionInformation(
+                    this.jobPersistenceService.setJobCompletionInformation(
                         job.getId().orElseThrow(IllegalArgumentException::new),
                         JobExecution.LOST_EXIT_CODE,
                         JobStatus.FAILED,
@@ -153,10 +151,10 @@ public class ClusterCheckerTask extends LeadershipTask {
                         null,
                         null
                     );
-                    lostJobsCounter.increment();
+                    this.lostJobsCounter.increment();
                 } catch (final GenieException ge) {
                     log.error("Unable to update job {} to failed due to exception", job.getId(), ge);
-                    unableToUpdateJobCounter.increment();
+                    this.unableToUpdateJobCounter.increment();
                 }
             }
         );
@@ -167,10 +165,8 @@ public class ClusterCheckerTask extends LeadershipTask {
         // If node is healthy, remove the entry from the errorCounts.
         // If node is not healthy, update the entry in errorCounts
         //
-        if (isNodeHealthy(host)) {
-            if (errorCounts.containsKey(host)) {
-                errorCounts.remove(host);
-            }
+        if (this.isNodeHealthy(host)) {
+            this.errorCounts.remove(host);
         } else {
             if (this.errorCounts.containsKey(host)) {
                 this.errorCounts.put(host, this.errorCounts.get(host) + 1);
@@ -187,7 +183,7 @@ public class ClusterCheckerTask extends LeadershipTask {
         //
         boolean result = true;
         try {
-            restTemplate.getForObject(this.scheme + host + this.healthEndpoint, String.class);
+            this.restTemplate.getForObject(this.scheme + host + this.healthEndpoint, String.class);
         } catch (final HttpStatusCodeException e) {
             log.error("Failed validating host {}", host, e);
             try {
@@ -198,7 +194,7 @@ public class ClusterCheckerTask extends LeadershipTask {
                     );
                 for (Map.Entry<String, Object> responseEntry : responseMap.entrySet()) {
                     if (responseEntry.getValue() instanceof Map
-                        && !healthIndicatorsToIgnore.contains(responseEntry.getKey())
+                        && !this.healthIndicatorsToIgnore.contains(responseEntry.getKey())
                         && !Status.UP.getCode().equals(((Map) responseEntry.getValue()).get(PROPERTY_STATUS))) {
                         result = false;
                         break;

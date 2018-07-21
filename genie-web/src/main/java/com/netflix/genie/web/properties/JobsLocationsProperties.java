@@ -19,8 +19,10 @@ package com.netflix.genie.web.properties;
 
 import lombok.Getter;
 import lombok.Setter;
-import org.hibernate.validator.constraints.NotEmpty;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
+
+import javax.validation.constraints.NotBlank;
 
 /**
  * Properties for various job related locations.
@@ -28,16 +30,23 @@ import org.springframework.validation.annotation.Validated;
  * @author tgianos
  * @since 3.0.0
  */
+@ConfigurationProperties(prefix = JobsLocationsProperties.PROPERTY_PREFIX)
 @Getter
 @Setter
 @Validated
 public class JobsLocationsProperties {
-    @NotEmpty(message = "Archives location is required")
+
+    /**
+     * The property prefix for all properties in this group.
+     */
+    public static final String PROPERTY_PREFIX = "genie.jobs.locations";
+
+    @NotBlank(message = "Archives location is required")
     private String archives = "file:///tmp/genie/archives/";
 
-    @NotEmpty(message = "Attachments temporary location is required")
+    @NotBlank(message = "Attachments temporary location is required")
     private String attachments = "file:///tmp/genie/attachments/";
 
-    @NotEmpty(message = "Jobs dir is required")
+    @NotBlank(message = "Jobs dir is required")
     private String jobs = "file:///tmp/genie/jobs/";
 }

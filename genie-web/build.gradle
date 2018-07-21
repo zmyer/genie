@@ -1,7 +1,3 @@
-plugins {
-    id "com.moowork.node" version "1.2.0"
-}
-
 apply plugin: "org.asciidoctor.convert"
 
 project.parent.tasks.collectDocumentation.dependsOn project.tasks.asciidoctor
@@ -9,8 +5,6 @@ project.parent.tasks.collectDocumentation.dependsOn project.tasks.asciidoctor
 ext {
     metaModelIgnorePattern = "**/com/netflix/genie/web/jpa/entities/*_.java"
     snippetsDir = new File(project.buildDir, "generated-snippets")
-    static_build_dir = new File(project.projectDir, "/src/main/resources/static/build")
-    static_project_dir = new File(project.projectDir, "/src/main/resources/static")
 }
 
 dependencies {
@@ -19,11 +13,13 @@ dependencies {
      *******************************/
 
     compile(project(":genie-common"))
+    compile(project(":genie-common-internal"))
     compile(project(":genie-proto"))
 
     compile("com.amazonaws:aws-java-sdk-sts")
     compile("com.github.fge:json-patch")
     compile("com.google.guava:guava")
+    compile("commons-codec:commons-codec")
     compile("commons-httpclient:commons-httpclient")
     compile("commons-io:commons-io")
     compile("commons-validator:commons-validator")
@@ -43,26 +39,15 @@ dependencies {
     compile("org.springframework.boot:spring-boot-starter-data-jpa") {
         exclude group: "org.hibernate.javax.persistence"
     }
-    compile("org.springframework.boot:spring-boot-starter-data-redis")
     compile("org.springframework.boot:spring-boot-starter-mail")
     compile("org.springframework.boot:spring-boot-starter-hateoas")
     compile("org.springframework.boot:spring-boot-starter-integration")
-    compile("org.springframework.boot:spring-boot-starter-security")
-    compile("org.springframework.boot:spring-boot-starter-thymeleaf")
     compile("org.springframework.boot:spring-boot-starter-tomcat")
     compile("org.springframework.boot:spring-boot-starter-web")
-    compile("org.springframework.cloud:spring-cloud-aws-context")
+    compile("org.springframework.cloud:spring-cloud-starter-aws")
+    compile("org.springframework.cloud:spring-cloud-starter-zookeeper")
     compile("org.springframework.integration:spring-integration-zookeeper")
     compile("org.springframework.retry:spring-retry")
-    compile("org.springframework.security:spring-security-jwt")
-    compile("org.springframework.security.extensions:spring-security-saml2-core") {
-        exclude group: "org.bouncycastle", module: "bcprov-jdk15"
-    }
-    compile("org.springframework.security.oauth:spring-security-oauth2")
-    // TODO: Remove this as they move features into core spring security
-    //       https://spring.io/blog/2018/01/30/next-generation-oauth-2-0-support-with-spring-security
-    compile("org.springframework.security.oauth.boot:spring-security-oauth2-autoconfigure")
-    compile("org.springframework.session:spring-session-core")
 
     /*******************************
      * Provided Dependencies
@@ -83,13 +68,13 @@ dependencies {
     runtime("mysql:mysql-connector-java")
     runtime("org.codehaus.groovy:groovy-all")
     runtime("org.postgresql:postgresql")
-    runtime("org.springframework.session:spring-session-data-redis")
 
     /*******************************
      * Test Dependencies
      *******************************/
 
     testCompile(project(":genie-test"))
+    testCompile(project(":genie-test-web"))
     testCompile("com.github.springtestdbunit:spring-test-dbunit")
     testCompile("com.jayway.jsonpath:json-path")
     testCompile("net.sf.jtidy:jtidy")
@@ -100,14 +85,12 @@ dependencies {
     testCompile("org.springframework.restdocs:spring-restdocs-core")
     testCompile("org.springframework.restdocs:spring-restdocs-mockmvc")
     testCompile("org.springframework.restdocs:spring-restdocs-restassured")
-    testCompile("org.springframework.security:spring-security-test")
     testCompile("io.grpc:grpc-testing")
 }
 
 license {
-    exclude "static/*"
-    exclude "templates/*"
     exclude "*.yml"
+    exclude "META-INF/spring.factories"
     exclude "genie-banner.txt"
     exclude "db/**/*.sql"
     exclude "**/com/netflix/genie/web/jpa/entities/*_.java"
@@ -123,8 +106,8 @@ def genieVersion = project.version.toString()
 asciidoctor {
     dependsOn test
     inputs.dir snippetsDir
-    attributes    \
-               "snippets": snippetsDir,
+    attributes       \
+                  "snippets": snippetsDir,
             "revnumber": genieVersion,
             "docinfo1": ""
 
@@ -146,56 +129,12 @@ asciidoctor {
     }
 }
 
-processResources {
-    from("src/main/resources") {
-        include "**/*.properties"
-        include "**/*.yml"
-        filter {
-            it.replace("GENIE_VERSION", genieVersion)
-        }
-    }
-}
-
-compileJava {
-    dependsOn processResources
-}
-
-node {
-    version = "4.4.0"
-    npmVersion = "3.8.6"
-    download = true
-}
-
-clean {
-    delete static_build_dir
-}
-
-task bundle(type: NpmTask) {
-    inputs.files(fileTree("node_modules"))
-    inputs.file("npm-shrinkwrap.json")
-    inputs.file("package.json")
-    inputs.file("server.js")
-    inputs.file("webpack.config.js")
-    inputs.dir static_project_dir
-
-    outputs.dir static_build_dir
-
-    dependsOn npm_install
-    args = ["run", "build"]
-}
-
-npm_install.args = ["--loglevel", "error"]
-npmInstall.args = ["--loglevel", "error"]
-
 jar {
-    dependsOn bundle
-
     manifest {
-        attributes("Implementation-Version": genieVersion)
-    }
-
-    from(static_build_dir) {
-        into "static"
+        attributes(
+                "Implementation-Title": project.name,
+                "Implementation-Version": project.version,
+        )
     }
 }
 

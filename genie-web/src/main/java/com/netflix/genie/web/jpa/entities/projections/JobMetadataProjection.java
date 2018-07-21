@@ -36,18 +36,18 @@ public interface JobMetadataProjection extends AuditProjection {
     String getUniqueId();
 
     /**
-     * Get the client host.
+     * Get the request api client hostname.
      *
-     * @return Optional of the client host
+     * @return {@link Optional} of the client host
      */
-    Optional<String> getClientHost();
+    Optional<String> getRequestApiClientHostname();
 
     /**
      * Get the user agent.
      *
      * @return Optional of the user agent
      */
-    Optional<String> getUserAgent();
+    Optional<String> getRequestApiClientUserAgent();
 
     /**
      * Get the number of attachments.

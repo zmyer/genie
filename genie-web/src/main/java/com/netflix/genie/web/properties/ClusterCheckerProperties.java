@@ -20,7 +20,6 @@ package com.netflix.genie.web.properties;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
 
 /**
@@ -29,12 +28,17 @@ import org.springframework.validation.annotation.Validated;
  * @author tgianos
  * @since 3.0.0
  */
-@ConfigurationProperties(prefix = "genie.tasks.cluster-checker")
-@Component
+@ConfigurationProperties(prefix = ClusterCheckerProperties.PROPERTY_PREFIX)
 @Getter
 @Setter
 @Validated
 public class ClusterCheckerProperties {
+
+    /**
+     * The property prefix for all properties in this group.
+     */
+    public static final String PROPERTY_PREFIX = "genie.tasks.cluster-checker";
+
     private String scheme = "http";
     private int port = 8080;
     private long rate = 300_000L;

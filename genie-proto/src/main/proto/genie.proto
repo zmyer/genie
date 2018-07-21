@@ -8,44 +8,280 @@ option java_multiple_files = true;
 option java_package = "com.netflix.genie.proto";
 option java_outer_classname = "GenieProto";
 
-
 // The Ping service definition.
 service PingService {
 
-  // Sends a greeting
-  rpc ping (PingRequest) returns (PongResponse) {
-  }
+    // Sends a greeting
+    rpc ping (PingRequest) returns (PongResponse) {
+    }
 }
 
 // The Ping request with client metadata.
 message PingRequest {
-  string request_id = 1;
-  string source_name = 2;
-  google.protobuf.Timestamp timestamp = 3;
-  map<string, string> client_metadata = 4;
+    string request_id = 1;
+    string source_name = 2;
+    google.protobuf.Timestamp timestamp = 3;
+    map<string, string> client_metadata = 4;
 }
 
 // The server response with server metadata.
 message PongResponse {
-  string request_id = 1;
-  google.protobuf.Timestamp timestamp = 2;
-  map<string, string> server_metadata = 3;
+    string request_id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    map<string, string> server_metadata = 3;
 }
 
+// Job Service
+service JobService {
+    rpc reserveJobId (ReserveJobIdRequest) returns (ReserveJobIdResponse);
+    rpc resolveJobSpecification (JobSpecificationRequest) returns (JobSpecificationResponse);
+    rpc getJobSpecification (JobSpecificationRequest) returns (JobSpecificationResponse);
+    rpc resolveJobSpecificationDryRun (DryRunJobSpecificationRequest) returns (JobSpecificationResponse);
+    rpc claimJob (ClaimJobRequest) returns (ClaimJobResponse);
+    rpc changeJobStatus (ChangeJobStatusRequest) returns (ChangeJobStatusResponse);
+}
+
+message JobMetadata {
+    string id = 1;
+    string name = 2;
+    string user = 3;
+    string version = 4;
+    string description = 5;
+    repeated string tags = 6;
+    string metadata = 7;
+    string email = 8;
+    string grouping = 9;
+    string grouping_instance = 10;
+    string setup_file = 11;
+    repeated string configs = 12;
+    repeated string dependencies = 13;
+    repeated string command_args = 14;
+}
+
+message Criterion {
+    repeated string tags = 1;
+    string id = 2;
+    string name = 3;
+    string status = 4;
+    string version = 5;
+}
+
+message ExecutionResourceCriteria {
+    repeated Criterion cluster_criteria = 1;
+    Criterion command_criterion = 2;
+    repeated string requested_application_id_overrides = 3;
+}
+
+message AgentConfig {
+    bool is_interactive = 1;
+    string job_directory_location = 2;
+}
+
+message ReserveJobIdRequest {
+    JobMetadata metadata = 1;
+    ExecutionResourceCriteria criteria = 2;
+    AgentConfig agent_config = 3;
+    AgentMetadata agent_metadata = 4;
+}
+
+message ReserveJobIdError {
+    enum Type {
+        UNKNOWN = 0;
+        ID_NOT_AVAILABLE = 1;
+        INVALID_REQUEST = 2;
+        SERVER_ERROR = 3;
+    }
+    Type type = 1;
+    string message = 2;
+}
+
+message ReserveJobIdResponse {
+    oneof response {
+        string id = 1;
+        ReserveJobIdError error = 2;
+    }
+}
+
+message JobSpecificationRequest {
+    string id = 1;
+}
+
+message DryRunJobSpecificationRequest {
+    JobMetadata metadata = 1;
+    ExecutionResourceCriteria criteria = 2;
+    AgentConfig agent_config = 3;
+}
+
+message ExecutionResource {
+    string id = 1;
+    string setup_file = 2;
+    repeated string configs = 3;
+    repeated string dependencies = 4;
+}
+
+message JobSpecification {
+    repeated string command_args = 1;
+    ExecutionResource job = 2;
+    ExecutionResource cluster = 3;
+    ExecutionResource command = 4;
+    repeated ExecutionResource applications = 5;
+    map<string, string> environment_variables = 6;
+    bool is_interactive = 7;
+    string job_directory_location = 8;
+}
+
+message JobSpecificationError {
+    enum Type {
+        UNKNOWN = 0;
+        NO_CLUSTER_FOUND = 1;
+        NO_COMMAND_FOUND = 2;
+        NO_APPLICATION_FOUND = 3;
+        NO_JOB_FOUND = 4;
+        NO_SPECIFICATION_FOUND = 5;
+        INVALID_REQUEST = 6;
+    }
+    Type type = 1;
+    string message = 2;
+}
+
+message JobSpecificationResponse {
+    oneof response {
+        JobSpecification specification = 1;
+        JobSpecificationError error = 2;
+    }
+}
+
+message AgentMetadata {
+    string agent_version = 1;
+    string agent_hostname = 2;
+    int32 agent_pid = 3;
+}
+
+message ClaimJobRequest {
+    string id = 1;
+    AgentMetadata agent_metadata = 2;
+}
+
+message ClaimJobError {
+    enum Type {
+        UNKNOWN = 0;
+        ALREADY_CLAIMED = 1;
+        NO_SUCH_JOB = 2;
+        INVALID_REQUEST = 3;
+        INVALID_STATUS = 4;
+    }
+    Type type = 1;
+    string message = 2;
+}
+
+message ClaimJobResponse {
+    bool successful = 1;
+    ClaimJobError error = 2;
+}
+
+message ChangeJobStatusRequest {
+    string id = 1;
+    string current_status = 2;
+    string new_status = 3;
+    string new_status_message = 4;
+}
+
+message ChangeJobStatusError {
+    enum Type {
+        UNKNOWN = 0;
+        INVALID_REQUEST = 1;
+        INCORRECT_CURRENT_STATUS = 2;
+        NO_SUCH_JOB = 3;
+    }
+    Type type = 1;
+    string message = 2;
+}
+
+message ChangeJobStatusResponse {
+    bool successful = 1;
+    ChangeJobStatusError error = 2;
+}
+
+//--------------------------------------------------------------------
+// JobFileSyncService
 //
-service AgentRegistrationService {
-  rpc registerAgent (AgentRegistrationRequest) returns (AgentRegistrationResponse);
+// This service is responsible for syncing files from a job directory
+// between the agent and the server it is connected to
+//--------------------------------------------------------------------
+service JobFileSyncService {
+    rpc sync (stream SyncRequest) returns (stream SyncResponse);
 }
 
-message AgentRegistrationRequest {
-  string agentVersion = 1;
-  string agentHostname = 2;
-  string agentPid = 3;
+message SyncRequest {
+    oneof message {
+        // Signal that the client is going to start uploading files to the server for given job
+        BeginSync begin_sync = 1;
+        // Upload data. The core of the service
+        DataUpload data_upload = 2;
+        // A file has been deleted on the Agent. Delete it on the server.
+        DeleteFile delete_file = 3;
+        // Signal that the client is done syncing all its data includes the hashes of the files so the server
+        // can act if hashes don't line up (probably re-download from backup)
+        SyncComplete sync_complete = 4;
+    }
 }
 
-message AgentRegistrationResponse {
-  string serverHostname = 1;
-  string agentId = 2;
-  bool agentAccepted = 3;
-  string serverMessage = 4;
+message BeginSync {
+    string job_id = 1;
+    JobDirectoryState acknowledged_agent_directory_state = 2;
+}
+
+message DataUpload {
+    string id = 1;
+    string path = 2;
+    int64 start_byte = 3;
+    bytes data = 4;
+}
+
+message DeleteFile {
+    string id = 1;
+    string path = 2;
+}
+
+message SyncComplete {
+    JobDirectoryState final_agent_directory_state = 2;
+}
+
+message JobDirectoryState {
+    bool includes_md5 = 1;
+    repeated JobFileState files = 2;
+}
+
+message JobFileState {
+    string path = 1;
+    int64 size = 2;
+    string md5 = 3;
+}
+
+message SyncResponse {
+    oneof message {
+        // Acknowledge that the agent is free to start sending data for this job and supply the current job directory
+        // state in case it allows the agent to not resend the entire file
+        BeginAcknowledgement begin_ack = 1;
+        // Signal to the agent that it needs to reset its syc and send another BeginSync request
+        ResetSync reset = 2;
+        // Acknowledge a set of sync requests with an acknowledgement of which succeeded and which failed
+        SyncAcknowledgement sync_ack = 3;
+    }
+}
+
+message BeginAcknowledgement {
+    JobDirectoryState server_directory_state = 1;
+}
+
+message ResetSync {
+}
+
+message SyncRequestResult {
+    string id = 1;
+    bool successful = 2;
+}
+
+message SyncAcknowledgement {
+    repeated SyncRequestResult results = 1;
 }

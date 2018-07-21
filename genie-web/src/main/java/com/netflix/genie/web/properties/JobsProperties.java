@@ -19,9 +19,10 @@ package com.netflix.genie.web.properties;
 
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
-import javax.validation.constraints.NotNull;
+import javax.validation.Valid;
 
 /**
  * All properties related to jobs in Genie.
@@ -29,25 +30,35 @@ import javax.validation.constraints.NotNull;
  * @author tgianos
  * @since 3.0.0
  */
+@ConfigurationProperties(prefix = JobsProperties.PROPERTY_PREFIX)
 @Getter
 @Setter
 @Validated
 public class JobsProperties {
-    @NotNull
+
+    /**
+     * The property prefix for all properties in this group.
+     */
+    public static final String PROPERTY_PREFIX = "genie.jobs";
+
+    @Valid
     private JobsCleanupProperties cleanup = new JobsCleanupProperties();
 
-    @NotNull
+    @Valid
     private JobsForwardingProperties forwarding = new JobsForwardingProperties();
 
-    @NotNull
+    @Valid
     private JobsLocationsProperties locations = new JobsLocationsProperties();
 
-    @NotNull
+    @Valid
     private JobsMaxProperties max = new JobsMaxProperties();
 
-    @NotNull
+    @Valid
     private JobsMemoryProperties memory = new JobsMemoryProperties();
 
-    @NotNull
+    @Valid
     private JobsUsersProperties users = new JobsUsersProperties();
+
+    @Valid
+    private ExponentialBackOffTriggerProperties completionCheckBackOff = new ExponentialBackOffTriggerProperties();
 }

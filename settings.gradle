@@ -1,3 +1,17 @@
-rootProject.name='genie'
+rootProject.name = "genie"
 
-include 'genie-test', 'genie-common', 'genie-proto', 'genie-web', 'genie-app', 'genie-war', 'genie-client', 'genie-agent', 'genie-demo', 'genie-ddl', 'genie-docs'
+include "genie-test",
+        "genie-test-web",
+        "genie-common",
+        "genie-common-internal",
+        "genie-common-external",
+        "genie-proto",
+        "genie-ui",
+        "genie-web",
+        "genie-security",
+        "genie-app",
+        "genie-war",
+        "genie-client",
+        "genie-agent",
+        "genie-demo",
+        "genie-docs"

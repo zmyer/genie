@@ -19,10 +19,11 @@ package com.netflix.genie.web.properties;
 
 import lombok.Getter;
 import lombok.Setter;
-import org.hibernate.validator.constraints.NotEmpty;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 import javax.validation.constraints.Min;
+import javax.validation.constraints.NotEmpty;
 
 /**
  * Properties related to job forwarding.
@@ -30,10 +31,22 @@ import javax.validation.constraints.Min;
  * @author tgianos
  * @since 3.0.0
  */
+@ConfigurationProperties(prefix = JobsForwardingProperties.PROPERTY_PREFIX)
 @Getter
 @Setter
 @Validated
 public class JobsForwardingProperties {
+
+    /**
+     * The property prefix for job forwarding.
+     */
+    public static final String PROPERTY_PREFIX = "genie.jobs.forwarding";
+
+    /**
+     * The property key for whether this feature is enabled or not.
+     */
+    public static final String ENABLED_PROPERTY = PROPERTY_PREFIX + ".enabled";
+
     private boolean enabled;
 
     @NotEmpty(message = "A scheme is required for forwarding")

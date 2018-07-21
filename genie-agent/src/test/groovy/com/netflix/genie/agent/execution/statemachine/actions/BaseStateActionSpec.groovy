@@ -18,10 +18,13 @@
 
 package com.netflix.genie.agent.execution.statemachine.actions
 
+import com.google.common.collect.Lists
+import com.netflix.genie.agent.execution.ExecutionContext
 import com.netflix.genie.agent.execution.statemachine.Events
 import com.netflix.genie.agent.execution.statemachine.States
 import org.springframework.statemachine.StateContext
 import org.springframework.statemachine.StateMachine
+import org.springframework.statemachine.action.Action
 import org.springframework.statemachine.state.State
 import spock.lang.Specification
 
@@ -29,11 +32,16 @@ class BaseStateActionSpec extends Specification {
     StateContext<States, Events> stateContext
     StateMachine<States, Events> stateMachine
     State<States, Events> state
+    ExecutionContext executionContext
+    List<StateAction> cleanupList = Lists.newArrayList()
 
     void setup() {
         this.stateContext = Mock(StateContext)
         this.stateMachine = Mock(StateMachine)
         this.state = Mock(State)
+        this.executionContext = Mock(ExecutionContext)
+
+        executionContext.getCleanupActions() >> cleanupList
     }
 
     void cleanup() {
@@ -41,9 +49,9 @@ class BaseStateActionSpec extends Specification {
 
     def "Execute"() {
         setup:
-        def stateAction = new BaseStateAction() {
+        def stateAction = new BaseStateAction(executionContext) {
             @Override
-            protected Events executeStateAction(StateContext<States, Events> context) {
+            protected Events executeStateAction(ExecutionContext executionContext) {
                 return Events.INITIALIZE_COMPLETE
             }
         }
@@ -55,15 +63,16 @@ class BaseStateActionSpec extends Specification {
         2 * stateContext.getStateMachine() >> stateMachine
         1 * stateMachine.getState() >> state
         1 * state.getId() >> States.READY
+        1 * executionContext.addCleanupActions(stateAction)
         1 * stateMachine.sendEvent(Events.INITIALIZE_COMPLETE) >> true
     }
 
     def "ExecuteThrows"() {
         setup:
         def exception = new RuntimeException()
-        def stateAction = new BaseStateAction() {
+        def stateAction = new BaseStateAction(executionContext) {
             @Override
-            protected Events executeStateAction(StateContext<States, Events> context) {
+            protected Events executeStateAction(ExecutionContext executionContext) {
                 throw exception
             }
         }
@@ -72,33 +81,11 @@ class BaseStateActionSpec extends Specification {
         stateAction.execute(stateContext)
 
         then:
-        4 * stateContext.getStateMachine() >> stateMachine
+        2 * stateContext.getStateMachine() >> stateMachine
         1 * stateMachine.getState() >> state
         1 * state.getId() >> States.READY
+        1 * executionContext.addCleanupActions(stateAction)
         1 * stateMachine.sendEvent(Events.ERROR) >> true
-        1 * stateMachine.setStateMachineError(exception)
-        1 * stateMachine.hasStateMachineError() >> false
-    }
-
-    def "ExecuteThrowsWithErrorSet"() {
-        setup:
-        def exception = new IOException()
-        def stateAction = new BaseStateAction() {
-            @Override
-            protected Events executeStateAction(StateContext<States, Events> context) {
-                throw exception
-            }
-        }
-
-        when:
-        stateAction.execute(stateContext)
-
-        then:
-        3 * stateContext.getStateMachine() >> stateMachine
-        1 * stateMachine.getState() >> state
-        1 * state.getId() >> States.READY
-        1 * stateMachine.sendEvent(Events.ERROR) >> false
-        0 * stateMachine.setStateMachineError(exception)
-        1 * stateMachine.hasStateMachineError() >> true
+        1 * executionContext.addStateActionError(States.READY, stateAction.getClass() as Class<? extends Action>, exception)
     }
 }

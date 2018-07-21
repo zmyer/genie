@@ -23,12 +23,12 @@ import com.netflix.genie.common.exceptions.GeniePreconditionException;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
-import org.hibernate.validator.constraints.Length;
-import org.hibernate.validator.constraints.NotBlank;
 
 import javax.annotation.Nullable;
 import javax.persistence.Basic;
+import javax.persistence.CollectionTable;
 import javax.persistence.Column;
+import javax.persistence.ElementCollection;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
@@ -39,7 +39,10 @@ import javax.persistence.ManyToMany;
 import javax.persistence.OrderColumn;
 import javax.persistence.Table;
 import javax.validation.constraints.Min;
+import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Size;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -54,7 +57,7 @@ import java.util.Set;
  */
 @Getter
 @Setter
-@ToString(callSuper = true, exclude = {"configs", "dependencies", "tags", "applications", "clusters"})
+@ToString(callSuper = true, of = {"status", "executable", "checkDelay", "memory"})
 @Entity
 @Table(name = "commands")
 public class CommandEntity extends BaseEntity {
@@ -67,11 +70,17 @@ public class CommandEntity extends BaseEntity {
     @NotNull(message = "No command status entered and is required.")
     private CommandStatus status;
 
-    @Basic(optional = false)
-    @Column(name = "executable", nullable = false)
-    @NotBlank(message = "No executable entered for command and is required.")
-    @Length(max = 255, message = "Max length in database is 255 characters")
-    private String executable;
+    @ElementCollection
+    @CollectionTable(
+        name = "command_executable_arguments",
+        joinColumns = {
+            @JoinColumn(name = "command_id", nullable = false)
+        }
+    )
+    @Column(name = "argument", length = 1024, nullable = false)
+    @OrderColumn(name = "argument_order", nullable = false)
+    @NotEmpty(message = "No executable arguments entered. At least one is required.")
+    private List<@NotBlank @Size(max = 1024) String> executable = new ArrayList<>();
 
     @Basic(optional = false)
     @Column(name = "check_delay", nullable = false)
@@ -140,6 +149,16 @@ public class CommandEntity extends BaseEntity {
      */
     public CommandEntity() {
         super();
+    }
+
+    /**
+     * Set the executable and any default arguments for this command.
+     *
+     * @param executable The executable and default arguments which can't be blank and there must be at least one
+     */
+    public void setExecutable(@NotEmpty final List<@NotBlank @Size(max = 1024) String> executable) {
+        this.executable.clear();
+        this.executable.addAll(executable);
     }
 
     /**

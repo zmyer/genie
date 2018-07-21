@@ -1,0 +1,31 @@
+apply plugin: "java-library"
+
+dependencies {
+    /*******************************
+     * API Dependencies
+     *******************************/
+
+    /*******************************
+     * Implementation Dependencies
+     *******************************/
+
+     implementation("org.springframework:spring-context")
+     implementation(project(":genie-common"))
+     implementation(project(":genie-common-external"))
+     implementation(project(":genie-proto"))
+     implementation("org.apache.commons:commons-lang3")
+
+    /*******************************
+     * Provided Dependencies
+     *******************************/
+
+    /*******************************
+     * Runtime Dependencies
+     *******************************/
+
+    /*******************************
+     * Test Dependencies
+     *******************************/
+
+    testImplementation(project(":genie-test"))
+}

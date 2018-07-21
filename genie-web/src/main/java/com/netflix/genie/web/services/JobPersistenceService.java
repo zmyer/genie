@@ -19,18 +19,30 @@ package com.netflix.genie.web.services;
 
 import com.netflix.genie.common.dto.Job;
 import com.netflix.genie.common.dto.JobExecution;
-import com.netflix.genie.common.dto.JobMetadata;
-import com.netflix.genie.common.dto.JobRequest;
 import com.netflix.genie.common.dto.JobStatus;
 import com.netflix.genie.common.exceptions.GenieException;
-import org.hibernate.validator.constraints.NotBlank;
+import com.netflix.genie.common.internal.dto.v4.AgentClientMetadata;
+import com.netflix.genie.common.internal.dto.v4.JobRequest;
+import com.netflix.genie.common.internal.dto.v4.JobRequestMetadata;
+import com.netflix.genie.common.internal.dto.v4.JobSpecification;
+import com.netflix.genie.common.internal.exceptions.unchecked.GenieApplicationNotFoundException;
+import com.netflix.genie.common.internal.exceptions.unchecked.GenieClusterNotFoundException;
+import com.netflix.genie.common.internal.exceptions.unchecked.GenieCommandNotFoundException;
+import com.netflix.genie.common.internal.exceptions.unchecked.GenieIdAlreadyExistsException;
+import com.netflix.genie.common.internal.exceptions.unchecked.GenieInvalidStatusException;
+import com.netflix.genie.common.internal.exceptions.unchecked.GenieJobAlreadyClaimedException;
+import com.netflix.genie.common.internal.exceptions.unchecked.GenieJobNotFoundException;
+import com.netflix.genie.common.internal.exceptions.unchecked.GenieRuntimeException;
 import org.springframework.validation.annotation.Validated;
 
 import javax.annotation.Nullable;
+import javax.validation.Valid;
 import javax.validation.constraints.Min;
+import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Interfaces for providing persistence functions for jobs other than search.
@@ -51,8 +63,8 @@ public interface JobPersistenceService {
      * @throws GenieException if there is an error
      */
     void createJob(
-        @NotNull final JobRequest jobRequest,
-        @NotNull final JobMetadata jobMetadata,
+        @NotNull final com.netflix.genie.common.dto.JobRequest jobRequest,
+        @NotNull final com.netflix.genie.common.dto.JobMetadata jobMetadata,
         @NotNull final Job job,
         @NotNull final JobExecution jobExecution
     ) throws GenieException;
@@ -138,5 +150,105 @@ public interface JobPersistenceService {
         @NotNull final Instant date,
         @Min(1) final int maxDeleted,
         @Min(1) final int pageSize
+    );
+
+    // V4 APIs
+
+    /**
+     * Save the job request information.
+     *
+     * @param jobRequest         All the metadata provided by the user about the job
+     * @param jobRequestMetadata Metadata about the request gathered by the system not provided by the user
+     * @return The id that was reserved in the system for this job
+     * @throws GenieIdAlreadyExistsException When the requested ID is already in use
+     * @throws GenieRuntimeException         On other type of error
+     */
+    String saveJobRequest(
+        @Valid final JobRequest jobRequest,
+        @Valid final JobRequestMetadata jobRequestMetadata
+    );
+
+    /**
+     * Get the original request for a job.
+     *
+     * @param id The unique id of the job to get
+     * @return The job request if one was found. Wrapped in {@link Optional} so empty optional returned if no job found
+     * @throws GenieRuntimeException On error converting entity values to DTO values
+     */
+    Optional<JobRequest> getJobRequest(@NotBlank(message = "Id is missing and is required") final String id);
+
+    /**
+     * Save the given job specification details for a job. Sets the job status to {@link JobStatus#RESOLVED}.
+     *
+     * @param id            The id of the job
+     * @param specification The job specification
+     * @throws GenieJobNotFoundException         When the job identified by {@code id} can't be found and the
+     *                                           specification can't be saved
+     * @throws GenieClusterNotFoundException     When the cluster specified in the job specification doesn't actually
+     *                                           exist
+     * @throws GenieCommandNotFoundException     When the command specified in the job specification doesn't actually
+     *                                           exist
+     * @throws GenieApplicationNotFoundException When an application specified in the job specification doesn't
+     *                                           actually exist
+     */
+    void saveJobSpecification(
+        @NotBlank(message = "Id is missing and is required") final String id,
+        @Valid final JobSpecification specification
+    );
+
+    /**
+     * Get the saved job specification for the given job. If the job hasn't had a job specification resolved an empty
+     * {@link Optional} will be returned.
+     *
+     * @param id The id of the job
+     * @return The job specification if one is present else an empty {@link Optional}
+     * @throws GenieJobNotFoundException     If no job with {@code id} exists
+     * @throws GenieClusterNotFoundException When the cluster isn't found in the database which it should be at this
+     *                                       point given the input to the db was valid at the time of persistence
+     * @throws GenieCommandNotFoundException When the command isn't found in the database which it should be at this
+     *                                       point given the input to the db was valid at the time of persistence
+     * @throws GenieRuntimeException         on unexpected error
+     */
+    Optional<JobSpecification> getJobSpecification(
+        @NotBlank(message = "Id is missing and is required") final String id
+    );
+
+    /**
+     * Set a job identified by {@code id} to be owned by the agent identified by {@code agentClientMetadata}. The
+     * job status in the system will be set to {@link com.netflix.genie.common.dto.JobStatus#CLAIMED}
+     *
+     * @param id                  The id of the job to claim. Must exist in the system.
+     * @param agentClientMetadata The metadata about the client claiming the job
+     * @throws GenieJobNotFoundException       if no job with the given {@code id} exists
+     * @throws GenieJobAlreadyClaimedException if the job with the given {@code id} already has been claimed
+     * @throws GenieInvalidStatusException     if the current job status is not
+     *                                         {@link com.netflix.genie.common.dto.JobStatus#RESOLVED}
+     */
+    void claimJob(
+        @NotBlank(message = "Job id is missing and is required") final String id,
+        @Valid final AgentClientMetadata agentClientMetadata
+    );
+
+    /**
+     * Update the status of the job identified with {@code id} to be {@code newStatus} provided that the current status
+     * of the job matches {@code newStatus}. Optionally a status message can be provided to provide more details to
+     * users. If the {@code newStatus} is {@link JobStatus#RUNNING} the start time will be set. If the {@code newStatus}
+     * is a member of {@link JobStatus#getFinishedStatuses()} and the job had a started time set the finished time of
+     * the job will be set.
+     *
+     * @param id               The id of the job to update status for. Must exist in the system.
+     * @param currentStatus    The status the caller to this API thinks the job currently has
+     * @param newStatus        The new status the caller would like to update the status to
+     * @param newStatusMessage An optional status message to associate with this change
+     * @throws GenieJobNotFoundException   if no job with the given {@code id} exists
+     * @throws GenieInvalidStatusException if the current status of the job identified by {@code id} in the system
+     *                                     doesn't match the supplied {@code currentStatus}.
+     *                                     Also if the {@code currentStatus} equals the {@code newStatus}.
+     */
+    void updateJobStatus(
+        @NotBlank(message = "Id is missing and is required") final String id,
+        @NotNull final JobStatus currentStatus,
+        @NotNull final JobStatus newStatus,
+        @Nullable final String newStatusMessage
     );
 }
