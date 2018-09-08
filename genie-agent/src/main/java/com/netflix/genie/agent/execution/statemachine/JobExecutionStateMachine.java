@@ -18,12 +18,16 @@
 
 package com.netflix.genie.agent.execution.statemachine;
 
+import com.netflix.genie.agent.execution.services.KillService;
+import org.springframework.context.ApplicationListener;
+
 /**
  * Interface JobExecutionStateMachine.
+ *
  * @author mprimi
  * @since 4.0.0
  */
-public interface JobExecutionStateMachine {
+public interface JobExecutionStateMachine extends ApplicationListener<KillService.KillEvent> {
 
     /**
      * Starts the state machine and returns.
@@ -32,8 +36,19 @@ public interface JobExecutionStateMachine {
 
     /**
      * Waits for the state machine to stop executing.
+     *
      * @return the final state in which the machine stopped
      * @throws InterruptedException if the waiting thread is interrupted
      */
     States waitForStop() throws InterruptedException;
+
+    /**
+     * Force an early termination of the state machine, in response to user submitting a kill via API or ctrl-c.
+     * Notice:
+     *  - State actions are not interrupted. Only after the one currently executing is completed the stop
+     *    signal is processed (TODO: make long-running actions, such as setup, interruptible).
+     *  - Some actions are still performed before the program exits. For example publish the updated job status
+     *    server-side. Refer to the {@link StateMachineConfig} for details.
+     */
+    void stop();
 }

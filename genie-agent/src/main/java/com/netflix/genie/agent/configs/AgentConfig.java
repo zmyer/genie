@@ -18,11 +18,15 @@
 
 package com.netflix.genie.agent.configs;
 
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.core.task.TaskExecutor;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 /**
  * Configuration for various agent beans.
@@ -34,17 +38,28 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 class AgentConfig {
 
     /**
-     * Get a task executor for cleaning up {@link com.netflix.genie.agent.execution.services.FetchingCacheService}.
+     * Get a task executor which may be shared by different components.
      *
-     * @return The task executor to use
+     * @return A task executor
      */
     @Bean
     @Lazy
-    public TaskExecutor fetchingCacheServiceCleanUpTaskExecutor() {
+    @Qualifier("sharedAgentTaskExecutor")
+    @ConditionalOnMissingBean(name = "sharedAgentTaskExecutor")
+    public TaskExecutor sharedAgentTaskExecutor() {
         final ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        //TODO Pool size should be parametrized once its decide how agent properties will be configured
-        executor.setCorePoolSize(1);
+        executor.initialize();
         return executor;
     }
 
+
+    @Bean
+    @Lazy
+    @Qualifier("heartBeatServiceTaskExecutor")
+    public TaskScheduler heartBeatServiceTaskExecutor() {
+        final ThreadPoolTaskScheduler taskScheduler = new ThreadPoolTaskScheduler();
+        taskScheduler.setPoolSize(1);
+        taskScheduler.initialize();
+        return taskScheduler;
+    }
 }

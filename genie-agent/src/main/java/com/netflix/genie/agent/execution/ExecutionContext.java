@@ -42,18 +42,12 @@ import java.util.Map;
 public interface ExecutionContext {
 
     /**
-     * Set the job process once it has been launched.
+     * Get the job run directory.
      *
-     * @param jobProcess a process handle for the children job
+     * @return the job directory File if one was set up, or null
      */
-    void setJobProcess(final Process jobProcess);
-
-    /**
-     * Get the job process.
-     *
-     * @return a Process, if it was set, or null
-     */
-    @Nullable Process getJobProcess();
+    @Nullable
+    File getJobDirectory();
 
     /**
      * Set the job directory.
@@ -63,11 +57,12 @@ public interface ExecutionContext {
     void setJobDirectory(final File jobDirectory);
 
     /**
-     * Get the job run directory.
+     * Get the job specification.
      *
-     * @return the job directory File if one was set up, or null
+     * @return the job specification if it was set, or null
      */
-    @Nullable File getJobDirectory();
+    @Nullable
+    JobSpecification getJobSpecification();
 
     /**
      * Set the job specification.
@@ -77,11 +72,12 @@ public interface ExecutionContext {
     void setJobSpecification(final JobSpecification jobSpecification);
 
     /**
-     * Get the job specification.
+     * Get the environment variables map for the job process.
      *
-     * @return the job specification if it was set, or null
+     * @return a map of environment variables and values if one was set, or null
      */
-    @Nullable JobSpecification getJobSpecification();
+    @Nullable
+    Map<String, String> getJobEnvironment();
 
     /**
      * Set the job environment variables map.
@@ -89,13 +85,6 @@ public interface ExecutionContext {
      * @param jobEnvironment a map of environment variables and their value to be passed to the job process at launch
      */
     void setJobEnvironment(final Map<String, String> jobEnvironment);
-
-    /**
-     * Get the environment variables map for the job process.
-     *
-     * @return a map of environment variables and values if one was set, or null
-     */
-    @Nullable Map<String, String> getJobEnvironment();
 
     /**
      * Enqueue cleanup for a state action.
@@ -106,6 +95,7 @@ public interface ExecutionContext {
 
     /**
      * Get the queue of states visited for the purpose of tracking post-job cleanup execution.
+     * Actions are ordered in the order they were added (i.e., order in which the corresponding states were visited).
      *
      * @return a deque of state actions executed
      */
@@ -114,9 +104,9 @@ public interface ExecutionContext {
     /**
      * Record a state action failure to execute and threw an exception.
      *
-     * @param state the state whose action failed with an exception
+     * @param state       the state whose action failed with an exception
      * @param actionClass the class of the state action that failed
-     * @param exception the exception thrown by the state action
+     * @param exception   the exception thrown by the state action
      */
     void addStateActionError(
         final States state,
@@ -139,6 +129,14 @@ public interface ExecutionContext {
     List<Triple<States, Class<? extends Action>, Exception>> getStateActionErrors();
 
     /**
+     * Get the final job status, if one was set.
+     *
+     * @return the final job status or null
+     */
+    @Nullable
+    JobStatus getFinalJobStatus();
+
+    /**
      * Set the final job status.
      *
      * @param jobStatus the final job status
@@ -146,11 +144,12 @@ public interface ExecutionContext {
     void setFinalJobStatus(final JobStatus jobStatus);
 
     /**
-     * Get the final job status, if one was set.
+     * Get the current job status.
      *
-     * @return the final job status or null
+     * @return the latest job status set, or null if never set
      */
-    @Nullable JobStatus getFinalJobStatus();
+    @Nullable
+    JobStatus getCurrentJobStatus();
 
     /**
      * Set the current job status.
@@ -160,22 +159,17 @@ public interface ExecutionContext {
     void setCurrentJobStatus(final JobStatus jobStatus);
 
     /**
-     * Get the current job status.
-     *
-     * @return the latest job status set, or null if never set
-     */
-    @Nullable JobStatus getCurrentJobStatus();
-
-    /**
-     * Set the job id of a successfully claimed job.
-     * @param jobId the job id
-     */
-    void setClaimedJobId(@NotBlank String jobId);
-
-    /**
      * Get the job id, if a job was claimed.
      *
      * @return a job id or null a job was not claimed
      */
-    @Nullable String getClaimedJobId();
+    @Nullable
+    String getClaimedJobId();
+
+    /**
+     * Set the job id of a successfully claimed job.
+     *
+     * @param jobId the job id
+     */
+    void setClaimedJobId(@NotBlank String jobId);
 }

@@ -26,7 +26,9 @@ import com.netflix.genie.web.properties.DataServiceRetryProperties;
 import com.netflix.genie.web.properties.FileCacheProperties;
 import com.netflix.genie.web.properties.HealthProperties;
 import com.netflix.genie.web.properties.JobsProperties;
+import com.netflix.genie.web.services.AgentConnectionPersistenceService;
 import com.netflix.genie.web.services.AgentJobService;
+import com.netflix.genie.web.services.AgentRoutingService;
 import com.netflix.genie.web.services.ApplicationPersistenceService;
 import com.netflix.genie.web.services.AttachmentService;
 import com.netflix.genie.web.services.ClusterLoadBalancer;
@@ -36,21 +38,26 @@ import com.netflix.genie.web.services.FileTransferFactory;
 import com.netflix.genie.web.services.JobCoordinatorService;
 import com.netflix.genie.web.services.JobFileService;
 import com.netflix.genie.web.services.JobKillService;
+import com.netflix.genie.web.services.JobKillServiceV4;
 import com.netflix.genie.web.services.JobPersistenceService;
 import com.netflix.genie.web.services.JobSearchService;
 import com.netflix.genie.web.services.JobSpecificationService;
 import com.netflix.genie.web.services.JobStateService;
 import com.netflix.genie.web.services.JobSubmitterService;
+import com.netflix.genie.web.services.MailService;
 import com.netflix.genie.web.services.impl.AgentJobServiceImpl;
+import com.netflix.genie.web.services.impl.AgentRoutingServiceImpl;
 import com.netflix.genie.web.services.impl.CacheGenieFileTransferService;
 import com.netflix.genie.web.services.impl.DiskJobFileServiceImpl;
 import com.netflix.genie.web.services.impl.FileSystemAttachmentService;
 import com.netflix.genie.web.services.impl.GenieFileTransferService;
 import com.netflix.genie.web.services.impl.JobCoordinatorServiceImpl;
+import com.netflix.genie.web.services.impl.JobKillServiceImpl;
 import com.netflix.genie.web.services.impl.JobSpecificationServiceImpl;
 import com.netflix.genie.web.services.impl.LocalFileTransferImpl;
-import com.netflix.genie.web.services.impl.LocalJobKillServiceImpl;
+import com.netflix.genie.web.services.impl.JobKillServiceV3;
 import com.netflix.genie.web.services.impl.LocalJobRunner;
+import com.netflix.genie.web.tasks.job.JobCompletionService;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.commons.exec.Executor;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -60,6 +67,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
+import org.springframework.retry.support.RetryTemplate;
 
 import javax.validation.constraints.NotEmpty;
 import java.io.IOException;
@@ -95,8 +103,8 @@ public class GenieServicesAutoConfiguration {
      * @return A job kill service instance.
      */
     @Bean
-    @ConditionalOnMissingBean(JobKillService.class)
-    public JobKillService jobKillService(
+    @ConditionalOnMissingBean(JobKillServiceV3.class)
+    public JobKillServiceV3 jobKillServiceV3(
         final GenieHostInfo genieHostInfo,
         final JobSearchService jobSearchService,
         final Executor executor,
@@ -105,7 +113,7 @@ public class GenieServicesAutoConfiguration {
         @Qualifier("jobsDir") final Resource genieWorkingDir,
         final ObjectMapper objectMapper
     ) {
-        return new LocalJobKillServiceImpl(
+        return new JobKillServiceV3(
             genieHostInfo.getHostname(),
             jobSearchService,
             executor,
@@ -113,6 +121,28 @@ public class GenieServicesAutoConfiguration {
             genieEventBus,
             genieWorkingDir,
             objectMapper
+        );
+    }
+
+    /**
+     * Get an local implementation of the JobKillService.
+     *
+     * @param jobKillServiceV3   Service to kill V3 jobs.
+     * @param jobKillServiceV4      Service to kill V4 jobs.
+     * @param jobPersistenceService Job persistence service
+     * @return A job kill service instance.
+     */
+    @Bean
+    @ConditionalOnMissingBean(JobKillService.class)
+    public JobKillService jobKillService(
+        final JobKillServiceV3 jobKillServiceV3,
+        final JobKillServiceV4 jobKillServiceV4,
+        final JobPersistenceService jobPersistenceService
+    ) {
+        return new JobKillServiceImpl(
+            jobKillServiceV3,
+            jobKillServiceV4,
+            jobPersistenceService
         );
     }
 
@@ -319,6 +349,63 @@ public class GenieServicesAutoConfiguration {
             clusterLoadBalancers,
             registry,
             jobsProperties
+        );
+    }
+
+    /**
+     * Get an implementation of {@link AgentRoutingService} if one hasn't already been defined.
+     *
+     * @param agentConnectionPersistenceService The persistence service to use for agent connections
+     * @param genieHostInfo                     The local genie host information
+     * @return A {@link AgentRoutingServiceImpl} instance
+     */
+    @Bean
+    @ConditionalOnMissingBean(AgentRoutingService.class)
+    public AgentRoutingService agentRoutingService(
+        final AgentConnectionPersistenceService agentConnectionPersistenceService,
+        final GenieHostInfo genieHostInfo
+    ) {
+        return new AgentRoutingServiceImpl(
+            agentConnectionPersistenceService,
+            genieHostInfo
+        );
+    }
+
+    /**
+     * Get an implementation of {@link JobCompletionService} if one hasn't already been defined.
+     *
+     * @param jobPersistenceService    The job persistence service to use
+     * @param jobSearchService         The job search service to use
+     * @param genieFileTransferService The file transfer service to use
+     * @param genieWorkingDir          Working directory for genie where it creates jobs directories.
+     * @param mailService              The mail service
+     * @param registry                 Registry
+     * @param jobsProperties           The jobs properties to use
+     * @param retryTemplate            The retry template
+     * @return an instance of {@link JobCompletionService}
+     * @throws GenieException if the bean fails during construction
+     */
+    @Bean
+    @ConditionalOnMissingBean(JobCompletionService.class)
+    public JobCompletionService jobCompletionService(
+        final JobPersistenceService jobPersistenceService,
+        final JobSearchService jobSearchService,
+        final GenieFileTransferService genieFileTransferService,
+        final Resource genieWorkingDir,
+        final MailService mailService,
+        final MeterRegistry registry,
+        final JobsProperties jobsProperties,
+        final RetryTemplate retryTemplate
+    ) throws GenieException {
+        return new JobCompletionService(
+            jobPersistenceService,
+            jobSearchService,
+            genieFileTransferService,
+            genieWorkingDir,
+            mailService,
+            registry,
+            jobsProperties,
+            retryTemplate
         );
     }
 }

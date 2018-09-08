@@ -21,6 +21,7 @@ package com.netflix.genie.agent.execution.statemachine.actions;
 import com.netflix.genie.agent.execution.ExecutionContext;
 import com.netflix.genie.agent.execution.exceptions.ChangeJobStatusException;
 import com.netflix.genie.agent.execution.services.AgentJobService;
+import com.netflix.genie.agent.execution.services.LaunchJobService;
 import com.netflix.genie.agent.execution.statemachine.Events;
 import com.netflix.genie.common.dto.JobStatus;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +30,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Action performed when in state MONITOR_JOB.
+ *
  * @author mprimi
  * @since 4.0.0
  */
@@ -38,13 +40,16 @@ import org.springframework.stereotype.Component;
 class MonitorJobAction extends BaseStateAction implements StateAction.MonitorJob {
 
     private final AgentJobService agentJobService;
+    private final LaunchJobService launchJobService;
 
     MonitorJobAction(
         final ExecutionContext executionContext,
-        final AgentJobService agentJobService
+        final AgentJobService agentJobService,
+        final LaunchJobService launchJobService
     ) {
         super(executionContext);
         this.agentJobService = agentJobService;
+        this.launchJobService = launchJobService;
     }
 
     /**
@@ -54,28 +59,24 @@ class MonitorJobAction extends BaseStateAction implements StateAction.MonitorJob
     protected Events executeStateAction(final ExecutionContext executionContext) {
         log.info("Monitoring job...");
 
-        final int exitCode;
+        final JobStatus finalJobStatus;
         try {
-             exitCode = executionContext.getJobProcess().waitFor();
+            finalJobStatus = launchJobService.waitFor();
         } catch (final InterruptedException e) {
-            throw new RuntimeException("Interrupted while waiting for job completion", e);
+            throw new RuntimeException("Interrupted while waiting for job process completion", e);
         }
 
-        log.info("Job process completed with exit code: {}", exitCode);
-
-        // TODO: handle KILLED case
-        final JobStatus finalJobStatus = exitCode == 0 ? JobStatus.SUCCEEDED : JobStatus.FAILED;
-
-        executionContext.setFinalJobStatus(finalJobStatus);
+        log.info("Job process completed with final status {}", finalJobStatus);
 
         try {
             this.agentJobService.changeJobStatus(
                 executionContext.getClaimedJobId(),
                 executionContext.getCurrentJobStatus(),
                 finalJobStatus,
-                "Job process exited with status " + exitCode
+                "Job process completed with final status " + finalJobStatus
             );
             executionContext.setCurrentJobStatus(finalJobStatus);
+            executionContext.setFinalJobStatus(finalJobStatus);
         } catch (ChangeJobStatusException e) {
             throw new RuntimeException("Failed to update job status", e);
         }

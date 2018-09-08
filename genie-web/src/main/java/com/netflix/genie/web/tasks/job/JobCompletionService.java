@@ -28,10 +28,10 @@ import com.netflix.genie.common.dto.JobStatus;
 import com.netflix.genie.common.dto.JobStatusMessages;
 import com.netflix.genie.common.exceptions.GenieException;
 import com.netflix.genie.common.exceptions.GenieServerException;
+import com.netflix.genie.common.internal.jobs.JobConstants;
 import com.netflix.genie.common.util.GenieObjectMapper;
 import com.netflix.genie.web.events.JobFinishedEvent;
 import com.netflix.genie.web.events.JobFinishedReason;
-import com.netflix.genie.common.internal.jobs.JobConstants;
 import com.netflix.genie.web.jobs.JobDoneFile;
 import com.netflix.genie.web.jobs.JobKillReasonFile;
 import com.netflix.genie.web.properties.JobsProperties;
@@ -49,11 +49,9 @@ import org.apache.commons.exec.DefaultExecutor;
 import org.apache.commons.exec.Executor;
 import org.apache.commons.exec.PumpStreamHandler;
 import org.apache.commons.io.FileUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.Resource;
 import org.springframework.retry.support.RetryTemplate;
-import org.springframework.stereotype.Service;
 
 import javax.validation.constraints.NotNull;
 import java.io.File;
@@ -71,7 +69,6 @@ import java.util.concurrent.TimeUnit;
  * @since 3.0.0
  */
 @Slf4j
-@Service
 public class JobCompletionService {
 
     static final String JOB_COMPLETION_TIMER_NAME = "genie.jobs.completion.timer";
@@ -105,7 +102,6 @@ public class JobCompletionService {
      * @param retryTemplate            Retry template for retrying remote calls
      * @throws GenieException if there is a problem
      */
-    @Autowired
     public JobCompletionService(
         final JobPersistenceService jobPersistenceService,
         final JobSearchService jobSearchService,

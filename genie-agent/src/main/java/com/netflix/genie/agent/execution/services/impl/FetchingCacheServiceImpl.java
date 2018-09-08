@@ -23,9 +23,9 @@ import com.google.common.io.Files;
 import com.netflix.genie.agent.cli.ArgumentDelegates;
 import com.netflix.genie.agent.execution.exceptions.DownloadException;
 import com.netflix.genie.agent.execution.exceptions.LockException;
+import com.netflix.genie.agent.execution.services.FetchingCacheService;
 import com.netflix.genie.agent.utils.locks.CloseableLock;
 import com.netflix.genie.agent.utils.locks.impl.FileLockFactory;
-import com.netflix.genie.agent.execution.services.FetchingCacheService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -97,7 +97,7 @@ class FetchingCacheServiceImpl implements FetchingCacheService {
         final ResourceLoader resourceLoader,
         final ArgumentDelegates.CacheArguments cacheArguments,
         final FileLockFactory fileLockFactory,
-        @Qualifier("fetchingCacheServiceCleanUpTaskExecutor") final TaskExecutor cleanUpTaskExecutor
+        @Qualifier("sharedAgentTaskExecutor") final TaskExecutor cleanUpTaskExecutor
     ) throws IOException {
         this.resourceLoader = resourceLoader;
         this.cacheDirectory = cacheArguments.getCacheDirectory();

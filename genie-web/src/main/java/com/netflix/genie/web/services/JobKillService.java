@@ -18,12 +18,9 @@
 package com.netflix.genie.web.services;
 
 import com.netflix.genie.common.exceptions.GenieException;
-import com.netflix.genie.web.events.KillJobEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.validation.annotation.Validated;
 
 import javax.validation.constraints.NotBlank;
-import javax.validation.constraints.NotNull;
 
 /**
  * Interface for services to kill jobs.
@@ -43,13 +40,4 @@ public interface JobKillService {
      */
     void killJob(@NotBlank(message = "No id entered. Unable to kill job.") final String id,
                  @NotBlank(message = "No reason provided.") final String reason) throws GenieException;
-
-    /**
-     * Listen for events where the system is requesting a certain job be killed.
-     *
-     * @param event The event
-     * @throws GenieException On any issue during killing
-     */
-    @EventListener
-    void onKillJobEvent(@NotNull final KillJobEvent event) throws GenieException;
 }

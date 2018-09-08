@@ -20,7 +20,9 @@ package com.netflix.genie.agent.cli;
 
 import com.beust.jcommander.Parameters;
 import com.beust.jcommander.ParametersDelegate;
+import com.google.common.annotations.VisibleForTesting;
 import com.netflix.genie.agent.execution.ExecutionContext;
+import com.netflix.genie.agent.execution.services.KillService;
 import com.netflix.genie.agent.execution.statemachine.JobExecutionStateMachine;
 import com.netflix.genie.agent.execution.statemachine.States;
 import lombok.Getter;
@@ -30,6 +32,8 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.statemachine.action.Action;
 import org.springframework.stereotype.Component;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -46,19 +50,30 @@ class ExecCommand implements AgentCommand {
     private final ExecCommandArguments execCommandArguments;
     private final JobExecutionStateMachine stateMachine;
     private final ExecutionContext executionContext;
+    private final KillService killService;
+    private final List<sun.misc.Signal> signalsToIntercept = Collections.unmodifiableList(Arrays.asList(
+        new sun.misc.Signal("INT"),
+        new sun.misc.Signal("TERM")
+    ));
 
     ExecCommand(
         final ExecCommandArguments execCommandArguments,
         final JobExecutionStateMachine stateMachine,
-        final ExecutionContext executionContext
+        final ExecutionContext executionContext,
+        final KillService killService
     ) {
         this.execCommandArguments = execCommandArguments;
         this.stateMachine = stateMachine;
         this.executionContext = executionContext;
+        this.killService = killService;
     }
 
     @Override
     public void run() {
+        for (final sun.misc.Signal s : signalsToIntercept) {
+            sun.misc.Signal.handle(s, signal -> handleTerminationSignal());
+        }
+
         log.info("Running job state machine");
         stateMachine.start();
 
@@ -93,6 +108,15 @@ class ExecCommand implements AgentCommand {
 
         log.info("Job execution completed successfully");
 
+    }
+
+    @VisibleForTesting
+    void handleTerminationSignal() {
+        UserConsole.getLogger().info(
+            "Intercepted a signal, terminating job (status: {})",
+            executionContext.getCurrentJobStatus()
+        );
+        killService.kill(KillService.KillSource.SYSTEM_SIGNAL);
     }
 
     @Component

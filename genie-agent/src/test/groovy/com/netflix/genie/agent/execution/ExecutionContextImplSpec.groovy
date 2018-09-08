@@ -34,8 +34,6 @@ class ExecutionContextImplSpec extends Specification {
     def "Get and set all"() {
         setup:
         ExecutionContext executionContext = new ExecutionContextImpl()
-        String agentId = "foo"
-        Process process = Mock()
         File directory = Mock()
         JobSpecification spec = Mock()
         Map<String, String> env = [ "foo": "bar" ]
@@ -47,7 +45,6 @@ class ExecutionContextImplSpec extends Specification {
         String jobId = UUID.randomUUID().toString()
 
         expect:
-        null == executionContext.getJobProcess()
         null == executionContext.getJobDirectory()
         null == executionContext.getJobSpecification()
         null == executionContext.getJobEnvironment()
@@ -59,7 +56,6 @@ class ExecutionContextImplSpec extends Specification {
         executionContext.getCleanupActions().isEmpty()
 
         when:
-        executionContext.setJobProcess(process)
         executionContext.setJobDirectory(directory)
         executionContext.setJobSpecification(spec)
         executionContext.setJobEnvironment(env)
@@ -70,7 +66,6 @@ class ExecutionContextImplSpec extends Specification {
         executionContext.setClaimedJobId(jobId)
 
         then:
-        process == executionContext.getJobProcess()
         directory == executionContext.getJobDirectory()
         spec == executionContext.getJobSpecification()
         env == executionContext.getJobEnvironment()
@@ -82,12 +77,6 @@ class ExecutionContextImplSpec extends Specification {
         action1 == executionContext.getCleanupActions().get(0)
         jobStatus == executionContext.getCurrentJobStatus()
         jobId == executionContext.getClaimedJobId()
-
-        when:
-        executionContext.setJobProcess(Mock(Process))
-
-        then:
-        thrown(RuntimeException)
 
         when:
         executionContext.setJobDirectory(Mock(File))

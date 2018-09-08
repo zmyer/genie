@@ -19,7 +19,10 @@
 package com.netflix.genie.agent.execution.statemachine.actions;
 
 import com.netflix.genie.agent.execution.ExecutionContext;
+import com.netflix.genie.agent.execution.exceptions.ChangeJobStatusException;
+import com.netflix.genie.agent.execution.services.AgentJobService;
 import com.netflix.genie.agent.execution.statemachine.Events;
+import com.netflix.genie.common.dto.JobStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
@@ -28,6 +31,7 @@ import java.util.List;
 
 /**
  * Action performed when in state CLEANUP_JOB.
+ *
  * @author mprimi
  * @since 4.0.0
  */
@@ -36,8 +40,14 @@ import java.util.List;
 @Lazy
 class CleanupJobAction extends BaseStateAction implements StateAction.CleanupJob {
 
-    CleanupJobAction(final ExecutionContext executionContext) {
+    private final AgentJobService agentJobService;
+
+    CleanupJobAction(
+        final ExecutionContext executionContext,
+        final AgentJobService agentJobService
+    ) {
         super(executionContext);
+        this.agentJobService = agentJobService;
     }
 
     /**
@@ -47,6 +57,27 @@ class CleanupJobAction extends BaseStateAction implements StateAction.CleanupJob
     protected Events executeStateAction(final ExecutionContext executionContext) {
         log.info("Cleaning up job...");
 
+        // If execution was aborted sometimes before the job was launched, the server is due for a job status update.
+        final String claimedJobId = executionContext.getClaimedJobId();
+        final JobStatus finalJobStatus = executionContext.getFinalJobStatus();
+        if (claimedJobId != null && finalJobStatus == null) {
+            // This job is tracked server-side (an ID was claimed), but the server was not updated with a final
+            // status. The only path that leads to this state is a CANCEL_JOB_LAUNCH transition.
+            try {
+                agentJobService.changeJobStatus(
+                    claimedJobId,
+                    executionContext.getCurrentJobStatus(),
+                    JobStatus.KILLED,
+                    "Job aborted before process launch"
+                );
+                executionContext.setCurrentJobStatus(JobStatus.KILLED);
+                executionContext.setFinalJobStatus(JobStatus.KILLED);
+            } catch (final ChangeJobStatusException e) {
+                throw new RuntimeException("Failed to update server status", e);
+            }
+        }
+
+        // For each state action performed, perform the corresponding cleanup.
         final List<StateAction> cleanupActions = executionContext.getCleanupActions();
         for (final StateAction cleanupAction : cleanupActions) {
 

@@ -18,6 +18,7 @@
 
 package com.netflix.genie.agent.execution.statemachine;
 
+import com.netflix.genie.agent.execution.services.KillService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.statemachine.StateMachine;
@@ -28,6 +29,7 @@ import java.util.concurrent.CountDownLatch;
 
 /**
  * Implementation of JobExecutionStateMachine.
+ *
  * @author mprimi
  * @since 4.0.0
  */
@@ -76,5 +78,23 @@ class JobExecutionStateMachineImpl implements JobExecutionStateMachine {
             log.error("Interrupted while waiting for state machine to complete");
             throw e;
         }
+    }
+
+    @Override
+    public void stop() {
+        log.info("Stopping state machine (in state: {})", stateMachine.getState().getId());
+        // This event is processed iff the state machine has not reached the state where the job is launched.
+        stateMachine.sendEvent(Events.CANCEL_JOB_LAUNCH);
+        // If the job is already running, then the machine can do nothing but wait for it to complete
+        // (killing the child process is handled elsewhere).
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void onApplicationEvent(final KillService.KillEvent event) {
+        log.info("Stopping state machine due to kill event (source: {})", event.getKillSource());
+        this.stop();
     }
 }
